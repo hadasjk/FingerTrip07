@@ -1,0 +1,56 @@
+# --------------------------------------------------------------------------------
+# 언리얼 엔진 .gitignore (Binaries 허용, 거대 파일 차단)
+# --------------------------------------------------------------------------------
+
+# 1. 비주얼 스튜디오 / IDE 관련 임시 파일
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.user
+*.xcworkspace
+*.xcodeproj
+.vsconfig
+
+# 2. C++ 컴파일된 오브젝트 및 기타 라이브러리
+*.slo
+*.lo
+*.o
+*.obj
+*.gch
+*.pch
+*.so
+*.dylib
+*.dll.manifest
+*.a
+*.lib
+
+# 3. 거대한 실행 파일 및 디버깅 기호 파일 차단 (Github 100MB 제한 에러 방지)
+*.exe
+*.pdb
+
+# 4. 언리얼 엔진 생성 폴더 (절대 깃에 올라가면 안 되는 3대장)
+Intermediate/
+Plugins/**/Intermediate/
+Saved/
+DerivedDataCache/
+
+# 5. 패키징 빌드 및 쿠킹 임시 파일
+Build/
+Builds/
+Cooked/
+Tmp/
+
+# 6. 로그 및 기타 임시 파일
+*.log
+*.tps
+*.unrealInsights
+
+# 7. 맵 빌드 데이터 (선택 사항: 라이팅 구운 데이터 등 용량이 큼)
+*_BuiltData.uasset
+
