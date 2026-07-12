@@ -3,6 +3,7 @@
 
 #include "FingerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h" // GetWorld()->GetTimeSeconds() 사용을 위해 포함
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
@@ -69,6 +70,13 @@ void AFingerCharacter::BeginPlay()
 
 	// 초기 속도 배율 적용
 	UpdateMovementSpeed();
+
+	// --- 카메라 위아래 각도 제한 설정 ---
+	if (APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0))
+	{
+		CameraManager->ViewPitchMin = -60.0f; // 아래로 최대 60도
+		CameraManager->ViewPitchMax = 20.0f;  // 위로 최대 20도
+	}
 }
 
 // Called every frame
@@ -79,6 +87,38 @@ void AFingerCharacter::Tick(float DeltaTime)
 	if (bIsWalkingRhythmically)
 	{
 		AddMovementInput(GetActorForwardVector(), 1.0f);
+	}
+
+	// --- 3D 자유 시점 / 백뷰 고정(조향) 전환 로직 ---
+	USpringArmComponent* SpringArmComp = FindComponentByClass<USpringArmComponent>();
+	if (SpringArmComp)
+	{
+		float CurrentSpeed = GetVelocity().Size();
+		bool bIsMoving = CurrentSpeed > 10.0f;
+
+		// 마우스에 캐릭터가 확확 돌아가지 않도록 항상 false 유지 (대신 AddCameraYaw에서 직접 부드럽게 조향)
+		bUseControllerRotationYaw = false; 
+		
+		// 카메라는 항상 언리얼의 부드러운 기본 시스템(ControlRotation)을 따름
+		SpringArmComp->bUsePawnControlRotation = true;
+
+		if (bIsMoving)
+		{
+			// 이동 상태: 카메라는 무조건 등 뒤(백뷰)를 향해 스무스하게 보간
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				FRotator CurrentControlRot = PC->GetControlRotation();
+				
+				// 카메라의 타겟은 항상 캐릭터의 현재 방향(조향 방향)
+				FRotator TargetRot = GetActorRotation();
+				TargetRot.Pitch = DefaultBackViewRotation.Pitch;
+				TargetRot.Roll = DefaultBackViewRotation.Roll;
+
+				// 자유시점에서 백뷰로 스르륵 따라오는 스무스 보간
+				FRotator NewControlRot = FMath::RInterpTo(CurrentControlRot, TargetRot, DeltaTime, CameraReturnInterpSpeed);
+				PC->SetControlRotation(NewControlRot);
+			}
+		}
 	}
 }
 
@@ -96,7 +136,45 @@ void AFingerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AFingerCharacter::Jump);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFingerCharacter::MoveForward);
-	PlayerInputComponent->BindAxis("LookRight", this, &APawn::AddControllerYawInput);
+	
+	// 원래 입력 방식 대신 커스텀 함수를 바인딩하여 마우스 입력 발생 시간을 기록합니다.
+	PlayerInputComponent->BindAxis("LookRight", this, &AFingerCharacter::AddCameraYaw);
+	PlayerInputComponent->BindAxis("LookUp", this, &AFingerCharacter::AddCameraPitch);
+}
+
+// --- 카메라 및 캐릭터 조향 로직 ---
+void AFingerCharacter::AddCameraYaw(float AxisValue)
+{
+	if (FMath::Abs(AxisValue) > 0.05f)
+	{
+		float CurrentSpeed = GetVelocity().Size();
+		if (CurrentSpeed > 10.0f)
+		{
+			// 1. 이동 중: 캐릭터를 좌우로 조향합니다. (SteeringSensitivity로 감도 조절 가능)
+			// 너무 확확 꺾이는 것을 방지하기 위해 감도 계수를 곱해줍니다.
+			AddActorLocalRotation(FRotator(0.0f, AxisValue * SteeringSensitivity, 0.0f));
+		}
+		else
+		{
+			// 2. 정지 상태: 마우스로 완전 자유 시점(카메라만 회전)
+			// 언리얼 카메라의 기본 배율(보통 2.5) 때문에 카메라가 2.5배 더 빨리 돕니다.
+			// 이를 상쇄해서 캐릭터 조향(SteeringSensitivity)과 완벽하게 똑같은 감도를 맞춥니다.
+			AddControllerYawInput((AxisValue * SteeringSensitivity) / 2.5f);
+		}
+	}
+}
+
+void AFingerCharacter::AddCameraPitch(float AxisValue)
+{
+	if (FMath::Abs(AxisValue) > 0.05f)
+	{
+		float CurrentSpeed = GetVelocity().Size();
+		if (CurrentSpeed <= 10.0f)
+		{
+			// 정지 중에만 카메라 위아래 회전을 허용하며, 감도를 동일하게 맞춥니다.
+			AddControllerPitchInput((AxisValue * SteeringSensitivity) / 2.5f);
+		}
+	}
 }
 
 

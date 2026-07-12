@@ -173,6 +173,27 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Game Clear")
     bool bHasGameEnded;
 
+    // --- 카메라 전환 제어 변수 ---
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    float CameraReturnInterpSpeed = 8.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    FRotator DefaultBackViewRotation = FRotator::ZeroRotator;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    float GyroSensitivity = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    float AutoAlignDelay = 1.5f; // 마우스 조작 후 백뷰 복귀까지 대기하는 시간 (초)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+    float SteeringSensitivity = 0.5f; // 이동 중 마우스 조향 민감도
+
+    float LastMouseInputTime = -1.0f; // 마지막으로 마우스를 조작한 시간
+
+    void AddCameraYaw(float AxisValue);
+    void AddCameraPitch(float AxisValue);
+
     // --- 점프력 가속을 위한 변수 ---
     UPROPERTY(EditAnywhere, Category = "Movement|Jump")
     float DefaultJumpZVelocity; // 캐릭터의 원래 JumpZVelocity를 저장할 변수
