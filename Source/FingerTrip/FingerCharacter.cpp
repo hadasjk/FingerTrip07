@@ -75,7 +75,12 @@ void AFingerCharacter::BeginPlay()
 	if (APlayerCameraManager* CameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0))
 	{
 		CameraManager->ViewPitchMin = -60.0f; // 아래로 최대 60도
-		CameraManager->ViewPitchMax = 20.0f;  // 위로 최대 20도
+		CameraManager->ViewPitchMax = 50.0f;  // 위로 최대 50도 (아래에서 위를 더 볼 수 있게 완화)
+	}
+
+	if (USpringArmComponent* SpringArmComp = FindComponentByClass<USpringArmComponent>())
+	{
+		TargetZoomLength = SpringArmComp->TargetArmLength;
 	}
 }
 
@@ -93,6 +98,9 @@ void AFingerCharacter::Tick(float DeltaTime)
 	USpringArmComponent* SpringArmComp = FindComponentByClass<USpringArmComponent>();
 	if (SpringArmComp)
 	{
+		// 부드러운 줌 보간
+		SpringArmComp->TargetArmLength = FMath::FInterpTo(SpringArmComp->TargetArmLength, TargetZoomLength, DeltaTime, ZoomInterpSpeed);
+
 		float CurrentSpeed = GetVelocity().Size();
 		bool bIsMoving = CurrentSpeed > 10.0f;
 
@@ -140,9 +148,23 @@ void AFingerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	// 원래 입력 방식 대신 커스텀 함수를 바인딩하여 마우스 입력 발생 시간을 기록합니다.
 	PlayerInputComponent->BindAxis("LookRight", this, &AFingerCharacter::AddCameraYaw);
 	PlayerInputComponent->BindAxis("LookUp", this, &AFingerCharacter::AddCameraPitch);
+	
+	PlayerInputComponent->BindAxis("Zoom", this, &AFingerCharacter::ZoomCamera);
 }
 
 // --- 카메라 및 캐릭터 조향 로직 ---
+void AFingerCharacter::ZoomCamera(float AxisValue)
+{
+	if (AxisValue != 0.0f)
+	{
+		float CurrentSpeed = GetVelocity().Size();
+		if (CurrentSpeed <= 10.0f) // 캐릭터가 멈춰있을 때만
+		{
+			TargetZoomLength = FMath::Clamp(TargetZoomLength + (AxisValue * -ZoomSpeed), MinZoom, MaxZoom);
+		}
+	}
+}
+
 void AFingerCharacter::AddCameraYaw(float AxisValue)
 {
 	if (FMath::Abs(AxisValue) > 0.05f)
@@ -193,6 +215,15 @@ void AFingerCharacter::OnLeftClick()
 			bNextStepIsLeft = false; // 첫 발은 자동 성공 처리되므로 다음은 오른발
 			ConsecutiveRhythmHits = 1;
 			UpdateMovementSpeed();
+
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				FRotator CamRot = PC->GetControlRotation();
+				FRotator CharRot = GetActorRotation();
+				CharRot.Yaw = CamRot.Yaw;
+				SetActorRotation(CharRot);
+			}
 		}
 	}
 	else
@@ -232,6 +263,15 @@ void AFingerCharacter::OnRightClick()
 			bNextStepIsLeft = true; // 우클릭(오른발) 출발 성공, 다음은 왼발
 			ConsecutiveRhythmHits = 1;
 			UpdateMovementSpeed();
+
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				FRotator CamRot = PC->GetControlRotation();
+				FRotator CharRot = GetActorRotation();
+				CharRot.Yaw = CamRot.Yaw;
+				SetActorRotation(CharRot);
+			}
 		}
 	}
 }

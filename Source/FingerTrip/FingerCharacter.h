@@ -194,6 +194,23 @@ public:
     void AddCameraYaw(float AxisValue);
     void AddCameraPitch(float AxisValue);
 
+    // 카메라 줌인/줌아웃
+    void ZoomCamera(float AxisValue);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom")
+    float ZoomSpeed = 100.0f; // 줌 속도
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom")
+    float MinZoom = 200.0f; // 최소 거리
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom")
+    float MaxZoom = 1500.0f; // 최대 거리
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Zoom")
+    float ZoomInterpSpeed = 5.0f; // 줌 보간 속도
+
+    float TargetZoomLength; // 부드러운 줌을 위한 목표 거리
+
     // --- 점프력 가속을 위한 변수 ---
     UPROPERTY(EditAnywhere, Category = "Movement|Jump")
     float DefaultJumpZVelocity; // 캐릭터의 원래 JumpZVelocity를 저장할 변수
