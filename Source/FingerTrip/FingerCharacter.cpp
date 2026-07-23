@@ -389,6 +389,13 @@ void AFingerCharacter::UpdateMovementSpeed()
 		/*UE_LOG(LogTemp, Warning, TEXT("Updated MaxWalkSpeed: %.1f (x%.1f), JumpZ: %.1f (x%.1f), Hits: %d"),
 			GetCharacterMovement()->MaxWalkSpeed, CurrentMovementSpeedMultiplier,
 			GetCharacterMovement()->JumpZVelocity, JumpMultiplier, ConsecutiveRhythmHits);*/
+
+		if (GEngine)
+		{
+			FString DebugMsg = FString::Printf(TEXT("Speed Multiplier: x%.1f"), CurrentMovementSpeedMultiplier);
+			// 첫 번째 인자로 키 값(1)을 주어 같은 메시지가 화면을 도배하지 않고 갱신되도록 합니다.
+			GEngine->AddOnScreenDebugMessage(1, 3.0f, FColor::Cyan, DebugMsg);
+		}
 	}
 }
 
