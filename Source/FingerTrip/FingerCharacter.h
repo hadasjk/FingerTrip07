@@ -218,6 +218,36 @@ public:
     UPROPERTY(EditAnywhere, Category = "Movement|Jump")
     float MaxJumpZVelocityMultiplier; // 최대 속도일 때 JumpZVelocity의 최대 배율
 
+    // --- 게이지 시스템 ---
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gauge")
+    float InitialGauge = 0.0f; // 초기 디폴트 게이지 (기본 0, 에디터에서 100으로 설정 가능)
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gauge")
+    float MaxGauge = 100.0f;     // 최대 게이지
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gauge")
+    float CurrentGauge = 0.0f;   // 현재 게이지
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gauge")
+    float GaugeGainPerHit = 10.0f; // 리듬 성공 시 획득 게이지
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gauge")
+    float GaugeDrainRate = 20.0f;  // 벽 걷기 시 초당 게이지 소모량
+
+    UFUNCTION(BlueprintCallable, Category = "Gauge")
+    void AddGauge(float Amount);
+
+    // --- 벽 걷기(중력 전환) 시스템 ---
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "WallWalking")
+    bool bIsWallWalking = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WallWalking")
+    float WallTraceDistance = 200.0f; // 벽 감지 사거리 (약 2미터)
+
+    void OnWallWalkPressed();
+    void StartWallWalking(const FVector& WallNormal, const FVector& WallPoint);
+    void StopWallWalking();
+
 private:
 
 
