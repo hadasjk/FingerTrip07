@@ -49,6 +49,15 @@ AFingerCharacter::AFingerCharacter()
 	DefaultJumpZVelocity = 800.0f; // BeginPlay에서 실제 값을 가져올 예정
 	MaxJumpZVelocityMultiplier = 1.5f; // 최대 속도일 때 점프력이 1.5배 증가하도록 설정 (조절 가능)
 
+	// --- 게이지 및 벽 걷기 초기화 ---
+	InitialGauge = 0.0f;
+	MaxGauge = 100.0f;
+	CurrentGauge = 0.0f;
+	GaugeGainPerHit = 10.0f;
+	GaugeDrainRate = 20.0f;
+	bIsWallWalking = false;
+	WallTraceDistance = 200.0f;
+
 	bIsLevelCleared = false;
 	bHasGameEnded = false;
 }
@@ -57,6 +66,8 @@ AFingerCharacter::AFingerCharacter()
 void AFingerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	CurrentGauge = FMath::Clamp(InitialGauge, 0.0f, MaxGauge);
 
 	// 블루프린트에서 설정된 최종 MaxWalkSpeed를 저장
 	DefaultMaxWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
@@ -84,6 +95,17 @@ void AFingerCharacter::BeginPlay()
 	}
 }
 
+void AFingerCharacter::AddGauge(float Amount)
+{
+	// 벽 걷기 중에는 리듬 성공 등으로 게이지가 증가하지 않도록 차단
+	if (bIsWallWalking && Amount > 0.0f)
+	{
+		return;
+	}
+
+	CurrentGauge = FMath::Clamp(CurrentGauge + Amount, 0.0f, MaxGauge);
+}
+
 // Called every frame
 void AFingerCharacter::Tick(float DeltaTime)
 {
@@ -92,6 +114,22 @@ void AFingerCharacter::Tick(float DeltaTime)
 	if (bIsWalkingRhythmically)
 	{
 		AddMovementInput(GetActorForwardVector(), 1.0f);
+	}
+
+	if (bIsWallWalking)
+	{
+		CurrentGauge = FMath::Max(0.0f, CurrentGauge - (GaugeDrainRate * DeltaTime));
+		if (CurrentGauge <= 0.0f)
+		{
+			StopWallWalking();
+		}
+	}
+
+	if (GEngine)
+	{
+		FString GaugeMsg = FString::Printf(TEXT("Gauge: %.1f / %.1f %s"),
+			CurrentGauge, MaxGauge, bIsWallWalking ? TEXT("[WALL WALKING]") : TEXT(""));
+		GEngine->AddOnScreenDebugMessage(2, 0.1f, bIsWallWalking ? FColor::Yellow : FColor::Green, GaugeMsg);
 	}
 
 	// --- 3D 자유 시점 / 백뷰 고정(조향) 전환 로직 ---
@@ -107,17 +145,18 @@ void AFingerCharacter::Tick(float DeltaTime)
 		// 마우스에 캐릭터가 확확 돌아가지 않도록 항상 false 유지 (대신 AddCameraYaw에서 직접 부드럽게 조향)
 		bUseControllerRotationYaw = false; 
 		
-		// 카메라는 항상 언리얼의 부드러운 기본 시스템(ControlRotation)을 따름
+		// 카메라는 항상 언리얼의 부드러운 기본 시스템(ControlRotation)을 따름 (월드 좌표계 기준 유지)
 		SpringArmComp->bUsePawnControlRotation = true;
 
 		if (bIsMoving)
 		{
-			// 이동 상태: 카메라는 무조건 등 뒤(백뷰)를 향해 스무스하게 보간
+			// 이동 상태: 카메라는 무조건 등 뒤(백뷰)를 향해 스무스하게 보간하되,
+			// Pitch와 Roll은 고정하여 벽을 걸어도 카메라는 항상 정상적인 똑바로 서있는 시점을 유지함
 			if (APlayerController* PC = Cast<APlayerController>(GetController()))
 			{
 				FRotator CurrentControlRot = PC->GetControlRotation();
 				
-				// 카메라의 타겟은 항상 캐릭터의 현재 방향(조향 방향)
+				// 카메라의 타겟은 항상 캐릭터의 현재 방향(조향 방향)의 Yaw만 따름
 				FRotator TargetRot = GetActorRotation();
 				TargetRot.Pitch = DefaultBackViewRotation.Pitch;
 				TargetRot.Roll = DefaultBackViewRotation.Roll;
@@ -142,6 +181,7 @@ void AFingerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("RightClick", IE_Released, this, &AFingerCharacter::OnRightRelease);
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AFingerCharacter::Jump);
+	PlayerInputComponent->BindAction("WallWalk", IE_Pressed, this, &AFingerCharacter::OnWallWalkPressed);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFingerCharacter::MoveForward);
 	
@@ -215,14 +255,18 @@ void AFingerCharacter::OnLeftClick()
 			bNextStepIsLeft = false; // 첫 발은 자동 성공 처리되므로 다음은 오른발
 			ConsecutiveRhythmHits = 1;
 			UpdateMovementSpeed();
+			AddGauge(GaugeGainPerHit);
 
-			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
-			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다. (벽 걷기 중이 아닐 때만)
+			if (!bIsWallWalking)
 			{
-				FRotator CamRot = PC->GetControlRotation();
-				FRotator CharRot = GetActorRotation();
-				CharRot.Yaw = CamRot.Yaw;
-				SetActorRotation(CharRot);
+				if (APlayerController* PC = Cast<APlayerController>(GetController()))
+				{
+					FRotator CamRot = PC->GetControlRotation();
+					FRotator CharRot = GetActorRotation();
+					CharRot.Yaw = CamRot.Yaw;
+					SetActorRotation(CharRot);
+				}
 			}
 		}
 	}
@@ -263,14 +307,18 @@ void AFingerCharacter::OnRightClick()
 			bNextStepIsLeft = true; // 우클릭(오른발) 출발 성공, 다음은 왼발
 			ConsecutiveRhythmHits = 1;
 			UpdateMovementSpeed();
+			AddGauge(GaugeGainPerHit);
 
-			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
-			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다. (벽 걷기 중이 아닐 때만)
+			if (!bIsWallWalking)
 			{
-				FRotator CamRot = PC->GetControlRotation();
-				FRotator CharRot = GetActorRotation();
-				CharRot.Yaw = CamRot.Yaw;
-				SetActorRotation(CharRot);
+				if (APlayerController* PC = Cast<APlayerController>(GetController()))
+				{
+					FRotator CamRot = PC->GetControlRotation();
+					FRotator CharRot = GetActorRotation();
+					CharRot.Yaw = CamRot.Yaw;
+					SetActorRotation(CharRot);
+				}
 			}
 		}
 	}
@@ -295,6 +343,7 @@ void AFingerCharacter::OnLeftFootDown()
 	{
 		ConsecutiveRhythmHits = 2;
 		UpdateMovementSpeed();
+		AddGauge(GaugeGainPerHit);
 		
 		// 다음 발(오른발)을 위한 이펙트 스폰
 		SpawnRhythmEffect(true);
@@ -306,6 +355,7 @@ void AFingerCharacter::OnLeftFootDown()
 		LastLeftClickTime = -1.0f;
 		ConsecutiveRhythmHits = FMath::Min(ConsecutiveRhythmHits + 1, MaxConsecutiveRhythmHits);
 		UpdateMovementSpeed();
+		AddGauge(GaugeGainPerHit);
 		bNextStepIsLeft = false; 
 
 		SpawnRhythmEffect(true);
@@ -327,6 +377,7 @@ void AFingerCharacter::OnRightFootDown()
 	{
 		ConsecutiveRhythmHits = 2;
 		UpdateMovementSpeed(); 
+		AddGauge(GaugeGainPerHit);
 		
 		// 다음 발(왼발)을 위한 이펙트 스폰
 		SpawnRhythmEffect(false);
@@ -338,6 +389,7 @@ void AFingerCharacter::OnRightFootDown()
 		LastRightClickTime = -1.0f;
 		ConsecutiveRhythmHits = FMath::Min(ConsecutiveRhythmHits + 1, MaxConsecutiveRhythmHits);
 		UpdateMovementSpeed(); 
+		AddGauge(GaugeGainPerHit);
 		bNextStepIsLeft = true;
 
 		SpawnRhythmEffect(false);
@@ -401,13 +453,152 @@ void AFingerCharacter::UpdateMovementSpeed()
 
 void AFingerCharacter::MoveForward(float AxisValue)
 {
-	// Axis 기반 이동은 사용하지 않습니다. (자동 이동으로 대체)
+	if (AxisValue != 0.0f)
+	{
+		// 개발자 테스트용 치트: WASD 이동 시 최고 속도(최대 콤보 상태)로 설정
+		ConsecutiveRhythmHits = SpeedMultipliers.Num() - 1;
+		UpdateMovementSpeed();
+
+		AddMovementInput(GetActorForwardVector(), AxisValue);
+	}
 }
 
 void AFingerCharacter::Jump()
 {
+	if (bIsWallWalking)
+	{
+		StopWallWalking();
+	}
 	Super::Jump(); // ACharacter의 기본 Jump 기능을 호출합니다.
 	bJumpInputPressed = true; // 점프 입력이 눌렸음을 표시
+}
+
+void AFingerCharacter::OnWallWalkPressed()
+{
+	if (bIsWallWalking)
+	{
+		StopWallWalking();
+		return;
+	}
+
+	// 점프 중에는 벽 걷기 사용 불가
+	if (GetCharacterMovement()->IsFalling())
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("점프 중에는 벽 걷기를 사용할 수 없습니다!"));
+		}
+		return;
+	}
+
+	if (CurrentGauge <= 0.0f)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("게이지가 부족하여 벽을 걸을 수 없습니다!"));
+		}
+		return;
+	}
+
+	// 캐릭터가 바라보는 방향 또는 카메라 방향으로 벽 감지 라인트레이스 수행
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	FVector TraceStart = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->GetCameraLocation() : GetActorLocation();
+	FVector TraceDir = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->GetCameraRotation().Vector() : GetActorForwardVector();
+	FVector TraceEnd = TraceStart + (TraceDir * WallTraceDistance);
+
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+
+	FHitResult HitResult;
+	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
+
+	// 카메라 뷰로 벽을 찾지 못했거나 바닥/천장을 친 경우, 캐릭터 정면(GetActorForwardVector)으로도 시도
+	if (!bHit || FMath::Abs(HitResult.ImpactNormal.Z) >= 0.75f)
+	{
+		TraceStart = GetActorLocation();
+		TraceEnd = TraceStart + (GetActorForwardVector() * WallTraceDistance);
+		bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
+	}
+
+	if (bHit && FMath::Abs(HitResult.ImpactNormal.Z) < 0.75f)
+	{
+		StartWallWalking(HitResult.ImpactNormal, HitResult.ImpactPoint);
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("바라보는 방향에 벽이 감지되지 않았습니다."));
+		}
+	}
+}
+
+void AFingerCharacter::StartWallWalking(const FVector& WallNormal, const FVector& WallPoint)
+{
+	if (bIsWallWalking) return;
+
+	bIsWallWalking = true;
+
+	// 1. 중력 방향을 벽면 쪽(-WallNormal)으로 변경
+	FVector NewGravityDir = -WallNormal;
+	GetCharacterMovement()->SetGravityDirection(NewGravityDir);
+
+	// 2. 캐릭터의 회전을 벽 표면에 맞추어 직교화 (위쪽이 아닌 캐릭터가 바라보던 앞쪽 방향을 벽면에 투영)
+	FVector WallUpNormal = WallNormal;
+	FVector WallForward = FVector::VectorPlaneProject(GetActorForwardVector(), WallUpNormal).GetSafeNormal();
+	if (WallForward.IsNearlyZero())
+	{
+		WallForward = FVector::VectorPlaneProject(GetActorRightVector(), WallUpNormal).GetSafeNormal();
+		if (WallForward.IsNearlyZero())
+		{
+			WallForward = FVector::UpVector;
+		}
+	}
+	FVector WallRight = FVector::CrossProduct(WallUpNormal, WallForward).GetSafeNormal();
+
+	// X=Forward, Y=Right, Z=Up 행렬 생성
+	FMatrix WallMatrix(WallForward, WallRight, WallUpNormal, FVector::ZeroVector);
+	SetActorRotation(WallMatrix.Rotator());
+
+	// 3. 이동 모드를 Walking으로 명시적 설정 및 속도 초기화
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+
+	// 4. 벽 걷기 중 언리얼 이동 컴포넌트가 캐릭터를 수평 바닥 기준(Pitch=0, Roll=0)으로 강제 회전시키려는 기능 비활성화
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("벽 걷기 시작!"));
+	}
+}
+
+void AFingerCharacter::StopWallWalking()
+{
+	if (!bIsWallWalking) return;
+
+	bIsWallWalking = false;
+
+	// 1. 중력 방향을 원래의 아래쪽으로 복원
+	GetCharacterMovement()->SetGravityDirection(FVector(0.0f, 0.0f, -1.0f));
+
+	// 2. 바닥 보행 회전 기능 복원 (본 프로젝트는 마우스 조향 AddActorLocalRotation을 사용하므로 false 유지)
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+
+	// 3. 캐릭터를 수평 바닥 기준 바로 서도록 회전 복원 (Yaw 유지, Pitch/Roll 0)
+	FRotator CurrentRot = GetActorRotation();
+	FRotator UprightRot(0.0f, CurrentRot.Yaw, 0.0f);
+	SetActorRotation(UprightRot);
+
+	// 4. 이동 모드를 Falling으로 변경하여 자연스럽게 바닥으로 떨어지도록 함
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("벽 걷기 해제"));
+	}
 }
 
 void AFingerCharacter::StopJumping()
@@ -551,18 +742,17 @@ void AFingerCharacter::SpawnRhythmEffect(bool bIsRightFoot)
 		BaseLocation -= GetActorRightVector() * 15.0f;
 	}
 
-	// 바닥의 기울기를 감지하기 위해 위에서 아래로 레이저(LineTrace)를 쏩니다.
-	FVector TraceStart = BaseLocation + FVector(0, 0, 100.0f);
-	FVector TraceEnd = BaseLocation - FVector(0, 0, 200.0f);
+	// 바닥이나 벽 표면을 감지하기 위해 캐릭터 위쪽(UpVector)에서 아래쪽(-UpVector)으로 라인트레이스를 쏩니다.
+	FVector TraceStart = BaseLocation + GetActorUpVector() * 100.0f;
+	FVector TraceEnd = BaseLocation - GetActorUpVector() * 200.0f;
 	FHitResult HitResult;
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
 
-	FVector SpawnLocation = BaseLocation;
-	SpawnLocation.Z -= 64.0f; // 레이저 실패 시: 바닥(-65)에서 1.0 위로 띄움
-	FRotator SpawnRotation = FRotator::ZeroRotator;
+	FVector SpawnLocation = BaseLocation - GetActorUpVector() * 64.0f; // 레이저 실패 시: 캐릭터 발 아래쪽으로 띄움
+	FRotator SpawnRotation = FRotationMatrix::MakeFromZ(GetActorUpVector()).Rotator();
 
-	// 바닥에 부딪혔다면, 그 바닥의 경사도(Normal)를 구해 회전값으로 만듭니다.
+	// 바닥이나 벽에 부딪혔다면, 그 표면의 법선(Normal)을 구해 회전값으로 만듭니다.
 	if (GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
 	{
 		SpawnLocation = HitResult.ImpactPoint + HitResult.ImpactNormal * 1.0f; // 깜빡임(Z-fighting) 방지용으로 딱 1.0만 띄움
