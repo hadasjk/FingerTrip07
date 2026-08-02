@@ -32,16 +32,16 @@ public:
     bool bJumpInputPressed = false; // 점프 입력이 눌렸을 때 true
 
 
-    UFUNCTION()
+    UFUNCTION(BlueprintCallable, Category = "Input")
     void OnLeftClick();
 
-    UFUNCTION()
+    UFUNCTION(BlueprintCallable, Category = "Input")
     void OnRightClick();
 
-    UFUNCTION()
+    UFUNCTION(BlueprintCallable, Category = "Input")
     void OnLeftRelease();
 
-    UFUNCTION()
+    UFUNCTION(BlueprintCallable, Category = "Input")
     void OnRightRelease();
 
     UPROPERTY(VisibleAnywhere)
@@ -191,7 +191,10 @@ public:
 
     float LastMouseInputTime = -1.0f; // 마지막으로 마우스를 조작한 시간
 
+    UFUNCTION(BlueprintCallable, Category = "Camera")
     void AddCameraYaw(float AxisValue);
+
+    UFUNCTION(BlueprintCallable, Category = "Camera")
     void AddCameraPitch(float AxisValue);
 
     // 카메라 줌인/줌아웃
