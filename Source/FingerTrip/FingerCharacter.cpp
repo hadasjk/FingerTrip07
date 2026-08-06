@@ -19,7 +19,7 @@ AFingerCharacter::AFingerCharacter()
 	bIsRightPressed = false;
 	LastLeftClickTime = -1.0f; // 초기값 -1 (유효하지 않은 시간)
 	LastRightClickTime = -1.0f; // 초기값 -1 (유효하지 않은 시간)
-	RhythmWindowTolerance = 0.2f; // 기본 타이밍 허용 오차
+	RhythmWindowTolerance = 0.2f; // 기본 타이밍 허용 오차 (C++ 디폴트 0.2s, 인스턴스에서 0.5s 사용)
 	bIsWalkingRhythmically = false;
 	bNextStepIsLeft = true;
 
@@ -127,9 +127,9 @@ void AFingerCharacter::Tick(float DeltaTime)
 
 	if (GEngine)
 	{
-		FString GaugeMsg = FString::Printf(TEXT("Gauge: %.1f / %.1f %s"),
-			CurrentGauge, MaxGauge, bIsWallWalking ? TEXT("[WALL WALKING]") : TEXT(""));
-		GEngine->AddOnScreenDebugMessage(2, 0.1f, bIsWallWalking ? FColor::Yellow : FColor::Green, GaugeMsg);
+		// FString GaugeMsg = FString::Printf(TEXT("Gauge: %.1f / %.1f %s"),
+		// 	CurrentGauge, MaxGauge, bIsWallWalking ? TEXT("[WALL WALKING]") : TEXT(""));
+		// GEngine->AddOnScreenDebugMessage(2, 0.1f, bIsWallWalking ? FColor::Yellow : FColor::Green, GaugeMsg);
 	}
 
 	// --- 3D 자유 시점 / 백뷰 고정(조향) 전환 로직 ---
@@ -338,6 +338,10 @@ void AFingerCharacter::OnLeftFootDown()
 {
 	float CurrentTime = UGameplayStatics::GetTimeSeconds(GetWorld());
 
+	// 속도 배율에 따른 단순 반비례 동적 판정 (정확히 1걸음/1주기 이내의 선입력만 허용)
+	// 예: 1.0배속->500ms(1주기), 2.0배속->250ms(1주기), 3.6배속(MAX)->139ms(1주기)
+	float EffectiveTolerance = RhythmWindowTolerance / FMath::Max(CurrentMovementSpeedMultiplier, 1.0f);
+
 	// 첫 이동 시작에 의한 왼발 딛기면 타이밍 체크 패스 (좌클릭 출발 시)
 	if (bIsWalkingRhythmically && ConsecutiveRhythmHits == 1 && !bStartedWithRightClick) 
 	{
@@ -350,7 +354,7 @@ void AFingerCharacter::OnLeftFootDown()
 		return;
 	}
 
-	if (bIsWalkingRhythmically && (CurrentTime - LastLeftClickTime <= RhythmWindowTolerance))
+	if (bIsWalkingRhythmically && (CurrentTime - LastLeftClickTime <= EffectiveTolerance))
 	{
 		LastLeftClickTime = -1.0f;
 		ConsecutiveRhythmHits = FMath::Min(ConsecutiveRhythmHits + 1, MaxConsecutiveRhythmHits);
@@ -371,6 +375,9 @@ void AFingerCharacter::OnLeftFootDown()
 void AFingerCharacter::OnRightFootDown()
 {
 	float CurrentTime = UGameplayStatics::GetTimeSeconds(GetWorld());
+
+	// 속도 배율에 따른 단순 반비례 동적 판정 (정확히 1걸음/1주기 이내의 선입력만 허용)
+	float EffectiveTolerance = RhythmWindowTolerance / FMath::Max(CurrentMovementSpeedMultiplier, 1.0f);
 	
 	// 우클릭 출발 시 첫 발(오른발) 타이밍 체크 패스
 	if (bIsWalkingRhythmically && ConsecutiveRhythmHits == 1 && bStartedWithRightClick) 
@@ -384,7 +391,7 @@ void AFingerCharacter::OnRightFootDown()
 		return;
 	}
 
-	if (bIsWalkingRhythmically && (CurrentTime - LastRightClickTime <= RhythmWindowTolerance))
+	if (bIsWalkingRhythmically && (CurrentTime - LastRightClickTime <= EffectiveTolerance))
 	{
 		LastRightClickTime = -1.0f;
 		ConsecutiveRhythmHits = FMath::Min(ConsecutiveRhythmHits + 1, MaxConsecutiveRhythmHits);
@@ -444,9 +451,9 @@ void AFingerCharacter::UpdateMovementSpeed()
 
 		if (GEngine)
 		{
-			FString DebugMsg = FString::Printf(TEXT("Speed Multiplier: x%.1f"), CurrentMovementSpeedMultiplier);
+			// FString DebugMsg = FString::Printf(TEXT("Speed Multiplier: x%.1f"), CurrentMovementSpeedMultiplier);
 			// 첫 번째 인자로 키 값(1)을 주어 같은 메시지가 화면을 도배하지 않고 갱신되도록 합니다.
-			GEngine->AddOnScreenDebugMessage(1, 3.0f, FColor::Cyan, DebugMsg);
+			// GEngine->AddOnScreenDebugMessage(1, 3.0f, FColor::Cyan, DebugMsg);
 		}
 	}
 }
@@ -486,7 +493,7 @@ void AFingerCharacter::OnWallWalkPressed()
 	{
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("점프 중에는 벽 걷기를 사용할 수 없습니다!"));
+			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("점프 중에는 벽 걷기를 사용할 수 없습니다!"));
 		}
 		return;
 	}
@@ -495,7 +502,7 @@ void AFingerCharacter::OnWallWalkPressed()
 	{
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("게이지가 부족하여 벽을 걸을 수 없습니다!"));
+			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("게이지가 부족하여 벽을 걸을 수 없습니다!"));
 		}
 		return;
 	}
@@ -528,7 +535,7 @@ void AFingerCharacter::OnWallWalkPressed()
 	{
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("바라보는 방향에 벽이 감지되지 않았습니다."));
+			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("바라보는 방향에 벽이 감지되지 않았습니다."));
 		}
 	}
 }
@@ -570,7 +577,7 @@ void AFingerCharacter::StartWallWalking(const FVector& WallNormal, const FVector
 
 	if (GEngine)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("벽 걷기 시작!"));
+		// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("벽 걷기 시작!"));
 	}
 }
 
@@ -597,7 +604,7 @@ void AFingerCharacter::StopWallWalking()
 
 	if (GEngine)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("벽 걷기 해제"));
+		// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("벽 걷기 해제"));
 	}
 }
 
@@ -654,29 +661,7 @@ void AFingerCharacter::AddSpecialCoinScore(int32 SpecialScoreToAdd)
 // --- 타이머 업데이트 함수 구현 ---
 void AFingerCharacter::UpdateGameTimer()
 {
-	if (TimeRemaining > 0)
-	{
-		TimeRemaining -= 1.0f; // 1초 감소
-		if (TimeRemaining < 0)
-		{
-			TimeRemaining = 0;
-		}
-		UE_LOG(LogTemp, Warning, TEXT("Time Remaining: %.1f"), TimeRemaining);
-
-		// 시간이 0이 되면 게임 종료 또는 특정 이벤트 발생
-		if (TimeRemaining <= 0 && Score < MaxScore)
-		{
-			// 시간 초과로 인한 게임 실패 로직
-			bIsLevelCleared = false;
-			bHasGameEnded = true;
-
-			UE_LOG(LogTemp, Warning, TEXT("Time's Up! Game Over."));
-			GetWorldTimerManager().ClearTimer(GameTimerHandle); // 타이머 중지
-
-			GetCharacterMovement()->StopMovementImmediately();
-			GetCharacterMovement()->DisableMovement();
-		}
-	}
+	// 블루프린트로 플레이 시간을 관리(hh:mm:ss 누적)하기 위해 C++의 타이머 감소 및 게임 오버 로직을 비활성화합니다.
 }
 
 
