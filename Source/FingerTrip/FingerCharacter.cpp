@@ -275,6 +275,7 @@ void AFingerCharacter::OnLeftClick()
 		// 걷고 있는데 눌러야 할 발이 오른발인데 좌클릭을 한 경우 즉시 콤보 끊기
 		if (!bNextStepIsLeft)
 		{
+			if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 실패 무시
 			bIsWalkingRhythmically = false;
 			ConsecutiveRhythmHits = 0;
 			UpdateMovementSpeed();
@@ -292,6 +293,7 @@ void AFingerCharacter::OnRightClick()
 		// 눌러야 할 발이 왼발인데 우클릭을 한 경우 즉시 콤보 끊기
 		if (bNextStepIsLeft)
 		{
+			if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 실패 무시
 			bIsWalkingRhythmically = false;
 			ConsecutiveRhythmHits = 0;
 			UpdateMovementSpeed();
@@ -366,6 +368,8 @@ void AFingerCharacter::OnLeftFootDown()
 	}
 	else if (bIsWalkingRhythmically)
 	{
+		if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 애니메이션 노티파이에 의한 실패 무시
+
 		bIsWalkingRhythmically = false;
 		ConsecutiveRhythmHits = 0; 
 		UpdateMovementSpeed(); 
@@ -403,6 +407,8 @@ void AFingerCharacter::OnRightFootDown()
 	}
 	else if (bIsWalkingRhythmically)
 	{
+		if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 애니메이션 노티파이에 의한 실패 무시
+
 		bIsWalkingRhythmically = false;
 		ConsecutiveRhythmHits = 0; 
 		UpdateMovementSpeed(); 
