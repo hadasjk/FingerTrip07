@@ -8,7 +8,7 @@ public class FingerTripTarget : TargetRules
 	public FingerTripTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
-		DefaultBuildSettings = BuildSettingsVersion.V4;
+		DefaultBuildSettings = BuildSettingsVersion.V7;
 
 		ExtraModuleNames.AddRange( new string[] { "FingerTrip" } );
 	}

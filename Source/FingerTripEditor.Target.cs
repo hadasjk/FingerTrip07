@@ -8,7 +8,7 @@ public class FingerTripEditorTarget : TargetRules
 	public FingerTripEditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V4;
+		DefaultBuildSettings = BuildSettingsVersion.V7;
 
 		ExtraModuleNames.AddRange( new string[] { "FingerTrip" } );
 	}
