@@ -158,7 +158,7 @@ void AFingerCharacter::Tick(float DeltaTime)
 				
 				// 카메라의 타겟은 항상 캐릭터의 현재 방향(조향 방향)의 Yaw만 따름
 				FRotator TargetRot = GetActorRotation();
-				TargetRot.Pitch = DefaultBackViewRotation.Pitch;
+				TargetRot.Pitch = CurrentControlRot.Pitch; // 수직 시점(위아래)은 유저가 조작한 현재 상태 유지
 				TargetRot.Roll = DefaultBackViewRotation.Roll;
 
 				// 자유시점에서 백뷰로 스르륵 따라오는 스무스 보간
@@ -230,12 +230,8 @@ void AFingerCharacter::AddCameraPitch(float AxisValue)
 {
 	if (FMath::Abs(AxisValue) > 0.05f)
 	{
-		float CurrentSpeed = GetVelocity().Size();
-		if (CurrentSpeed <= 10.0f)
-		{
-			// 정지 중에만 카메라 위아래 회전을 허용하며, 감도를 동일하게 맞춥니다.
-			AddControllerPitchInput((AxisValue * SteeringSensitivity) / 2.5f);
-		}
+		// 정지, 이동 상관없이 항상 카메라 위아래 회전을 허용합니다.
+		AddControllerPitchInput((AxisValue * SteeringSensitivity) / 2.5f);
 	}
 }
 
@@ -623,6 +619,11 @@ void AFingerCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit); // ACharacter의 기본 Landed 기능을 호출합니다.
 	bJumpInputPressed = false; // 착지했으므로 점프 입력 상태를 리셋 
+	
+	// 착지 시 바니합(연속 점프) 꼼수 방지를 위해 리듬 콤보 초기화
+	bIsWalkingRhythmically = false;
+	ConsecutiveRhythmHits = 0;
+	UpdateMovementSpeed();
 }
 
 // 점수 시스템

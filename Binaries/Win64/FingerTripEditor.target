@@ -2336,6 +2336,22 @@
 			"Type": "RequiredResource"
 		},
 		{
+			"Path": "$(EngineDir)/Plugins/ChaosClothAsset/Binaries/Win64/UnrealEditor-ChaosClothAsset.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/ChaosClothAsset/Binaries/Win64/UnrealEditor-ChaosClothAssetEngine.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/ChaosClothAsset/Binaries/Win64/UnrealEditor-ChaosClothAssetTools.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/ChaosClothAsset/Binaries/Win64/UnrealEditor.modules",
+			"Type": "RequiredResource"
+		},
+		{
 			"Path": "$(EngineDir)/Plugins/ChaosCloth/Binaries/Win64/UnrealEditor-ChaosCloth.dll",
 			"Type": "DynamicLibrary"
 		},
@@ -2389,6 +2405,18 @@
 		},
 		{
 			"Path": "$(EngineDir)/Plugins/Compositing/CompositeCore/Binaries/Win64/UnrealEditor.modules",
+			"Type": "RequiredResource"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/Compositing/OpenColorIO/Binaries/Win64/UnrealEditor-OpenColorIO.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/Compositing/OpenColorIO/Binaries/Win64/UnrealEditor-OpenColorIOEditor.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/Compositing/OpenColorIO/Binaries/Win64/UnrealEditor.modules",
 			"Type": "RequiredResource"
 		},
 		{
@@ -3981,6 +4009,34 @@
 		},
 		{
 			"Path": "$(EngineDir)/Plugins/MovieScene/LevelSequenceEditor/Binaries/Win64/UnrealEditor.modules",
+			"Type": "RequiredResource"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-MovieRenderPipelineCore.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-MovieRenderPipelineEditor.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-MovieRenderPipelineMP4Encoder.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-MovieRenderPipelineRenderPasses.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-MovieRenderPipelineSettings.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor-UEOpenExrRTTI.dll",
+			"Type": "DynamicLibrary"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/Binaries/Win64/UnrealEditor.modules",
 			"Type": "RequiredResource"
 		},
 		{
@@ -28874,6 +28930,10 @@
 			"Type": "UFS"
 		},
 		{
+			"Path": "$(EngineDir)/Plugins/ChaosClothAsset/ChaosClothAsset.uplugin",
+			"Type": "UFS"
+		},
+		{
 			"Path": "$(EngineDir)/Plugins/ChaosCloth/ChaosCloth.uplugin",
 			"Type": "UFS"
 		},
@@ -28891,6 +28951,10 @@
 		},
 		{
 			"Path": "$(EngineDir)/Plugins/Compositing/CompositeCore/CompositeCore.uplugin",
+			"Type": "UFS"
+		},
+		{
+			"Path": "$(EngineDir)/Plugins/Compositing/OpenColorIO/OpenColorIO.uplugin",
 			"Type": "UFS"
 		},
 		{
@@ -29434,6 +29498,10 @@
 			"Type": "UFS"
 		},
 		{
+			"Path": "$(EngineDir)/Plugins/MovieScene/MovieRenderPipeline/MovieRenderPipeline.uplugin",
+			"Type": "UFS"
+		},
+		{
 			"Path": "$(EngineDir)/Plugins/MovieScene/SequenceValidator/SequenceValidator.uplugin",
 			"Type": "UFS"
 		},
@@ -29763,6 +29831,7 @@
 		"ChangelistReview",
 		"ChaosCaching",
 		"ChaosCloth",
+		"ChaosClothAsset",
 		"ChaosEditor",
 		"ChaosInsights",
 		"ChaosNiagara",
@@ -29872,6 +29941,7 @@
 		"MobilePatchingUtils",
 		"ModelViewViewModel",
 		"ModelingToolsEditorMode",
+		"MovieRenderPipeline",
 		"MsQuic",
 		"Mutable",
 		"MutableAssetUserData",
@@ -29894,6 +29964,7 @@
 		"OnlineSubsystemNull",
 		"OnlineSubsystemUtils",
 		"OodleNetwork",
+		"OpenColorIO",
 		"PCG",
 		"Paper2D",
 		"PerforceSourceControl",
