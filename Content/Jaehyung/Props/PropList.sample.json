@@ -1,0 +1,126 @@
+{
+  "$schema": "prop-list-v1",
+  "note": "이 파일을 저장소의 Content/Jaehyung/Props/PropList.json 경로에 추가/커밋하면 웹사이트가 폴링해서 읽어갑니다. purpose(용도)/status(상태)는 이 파일을 직접 편집해서 push하면 반영되고, photo(사진)는 웹사이트에서 업로드하며 이 파일과는 별도로 서버에 저장됩니다. 새 필드는 각 prop 객체에 자유롭게 추가하면 웹사이트에 자동으로 표시됩니다.",
+  "props": [
+    {
+      "id": "BabyBed",
+      "name": "BabyBed",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "BabyBooks",
+      "name": "BabyBooks",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Baby_Bottle",
+      "name": "Baby_Bottle",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Baby_OpenBookcase",
+      "name": "Baby_OpenBookcase",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Baby_mat",
+      "name": "Baby_mat",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Baby_toilet",
+      "name": "Baby_toilet",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Ball",
+      "name": "Ball",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Blanket",
+      "name": "Blanket",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "CeilingLight",
+      "name": "CeilingLight",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "DinoDoll_AI",
+      "name": "DinoDoll_AI",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Mobile",
+      "name": "Mobile",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Pens",
+      "name": "Pens",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "PlayBlock_props",
+      "name": "PlayBlock_props",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Prop_Atlas",
+      "name": "Prop_Atlas",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Puzzle_floor",
+      "name": "Puzzle_floor",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Rocket_toy",
+      "name": "Rocket_toy",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Rotate_Mokma",
+      "name": "Rotate_Mokma",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Rulers",
+      "name": "Rulers",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Stickers",
+      "name": "Stickers",
+      "purpose": "",
+      "status": ""
+    },
+    {
+      "id": "Wooden_Baby_HighChair",
+      "name": "Wooden_Baby_HighChair",
+      "purpose": "",
+      "status": ""
+    }
+  ]
+}
