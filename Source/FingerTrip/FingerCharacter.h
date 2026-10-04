@@ -4,7 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "FingerItemTypes.h"
 #include "FingerCharacter.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnItemChanged, const FFingerItemData&, NewItemData);
 
 UCLASS()
 class FINGERTRIP_API AFingerCharacter : public ACharacter
@@ -240,16 +243,52 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Gauge")
     void AddGauge(float Amount);
 
-    // --- 벽 걷기(중력 전환) 시스템 ---
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "WallWalking")
-    bool bIsWallWalking = false;
+    // --- 아이템 시스템 (단일 소지, 덮어쓰기, Shift 사용) ---
+    UPROPERTY(BlueprintAssignable, Category = "Item")
+    FOnItemChanged OnItemChanged;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "WallWalking")
-    float WallTraceDistance = 200.0f; // 벽 감지 사거리 (약 2미터)
+    // 현재 보유 중인 아이템 데이터 (단일 슬롯, 먹으면 이전 아이템 덮어씌움)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
+    FFingerItemData CurrentHeldItem;
 
-    void OnWallWalkPressed();
-    void StartWallWalking(const FVector& WallNormal, const FVector& WallPoint);
-    void StopWallWalking();
+    // 아이템 획득 (새 아이템으로 덮어씀)
+    UFUNCTION(BlueprintCallable, Category = "Item")
+    void AcquireItem(const FFingerItemData& NewItemData);
+
+    // 아이템 사용 (Shift 키 입력 시 발동)
+    UFUNCTION(BlueprintCallable, Category = "Item")
+    void UseCurrentItem();
+
+    // --- 아이템 4가지 능력 관련 프로퍼티 및 함수 ---
+    // 1. 이동속도 버프
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Buff")
+    float ItemSpeedMultiplier = 1.0f;
+
+    FTimerHandle SpeedBuffTimerHandle;
+    void ApplySpeedBoost(float Multiplier, float Duration);
+    void EndSpeedBoost();
+
+    // 2. 점프력 버프
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Buff")
+    float ItemJumpMultiplier = 1.0f;
+
+    FTimerHandle JumpBuffTimerHandle;
+    void ApplyJumpBoost(float Multiplier, float Duration);
+    void EndJumpBoost();
+
+    // 3. 대쉬
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item|Dash")
+    float DefaultDashStrength = 2200.0f;
+
+    void ExecuteDash(float Strength);
+
+    // 4. 공중 걷기 (3초간 공중 걷기, 점프 불가)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|AirWalk")
+    bool bIsAirWalking = false;
+
+    FTimerHandle AirWalkTimerHandle;
+    void StartAirWalk(float Duration);
+    void EndAirWalk();
 
 private:
 

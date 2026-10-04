@@ -49,14 +49,18 @@ AFingerCharacter::AFingerCharacter()
 	DefaultJumpZVelocity = 800.0f; // BeginPlay에서 실제 값을 가져올 예정
 	MaxJumpZVelocityMultiplier = 1.5f; // 최대 속도일 때 점프력이 1.5배 증가하도록 설정 (조절 가능)
 
-	// --- 게이지 및 벽 걷기 초기화 ---
+	// --- 게이지 초기화 ---
 	InitialGauge = 0.0f;
 	MaxGauge = 100.0f;
 	CurrentGauge = 0.0f;
 	GaugeGainPerHit = 10.0f;
 	GaugeDrainRate = 20.0f;
-	bIsWallWalking = false;
-	WallTraceDistance = 200.0f;
+
+	// --- 아이템 시스템 초기화 ---
+	ItemSpeedMultiplier = 1.0f;
+	ItemJumpMultiplier = 1.0f;
+	DefaultDashStrength = 2200.0f;
+	bIsAirWalking = false;
 
 	bIsLevelCleared = false;
 	bHasGameEnded = false;
@@ -97,12 +101,6 @@ void AFingerCharacter::BeginPlay()
 
 void AFingerCharacter::AddGauge(float Amount)
 {
-	// 벽 걷기 중에는 리듬 성공 등으로 게이지가 증가하지 않도록 차단
-	if (bIsWallWalking && Amount > 0.0f)
-	{
-		return;
-	}
-
 	CurrentGauge = FMath::Clamp(CurrentGauge + Amount, 0.0f, MaxGauge);
 }
 
@@ -114,15 +112,6 @@ void AFingerCharacter::Tick(float DeltaTime)
 	if (bIsWalkingRhythmically)
 	{
 		AddMovementInput(GetActorForwardVector(), 1.0f);
-	}
-
-	if (bIsWallWalking)
-	{
-		CurrentGauge = FMath::Max(0.0f, CurrentGauge - (GaugeDrainRate * DeltaTime));
-		if (CurrentGauge <= 0.0f)
-		{
-			StopWallWalking();
-		}
 	}
 
 	if (GEngine)
@@ -181,7 +170,7 @@ void AFingerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("RightClick", IE_Released, this, &AFingerCharacter::OnRightRelease);
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AFingerCharacter::Jump);
-	PlayerInputComponent->BindAction("WallWalk", IE_Pressed, this, &AFingerCharacter::OnWallWalkPressed);
+	PlayerInputComponent->BindAction("UseItem", IE_Pressed, this, &AFingerCharacter::UseCurrentItem);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFingerCharacter::MoveForward);
 	
@@ -253,16 +242,13 @@ void AFingerCharacter::OnLeftClick()
 			UpdateMovementSpeed();
 			AddGauge(GaugeGainPerHit);
 
-			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다. (벽 걷기 중이 아닐 때만)
-			if (!bIsWallWalking)
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
 			{
-				if (APlayerController* PC = Cast<APlayerController>(GetController()))
-				{
-					FRotator CamRot = PC->GetControlRotation();
-					FRotator CharRot = GetActorRotation();
-					CharRot.Yaw = CamRot.Yaw;
-					SetActorRotation(CharRot);
-				}
+				FRotator CamRot = PC->GetControlRotation();
+				FRotator CharRot = GetActorRotation();
+				CharRot.Yaw = CamRot.Yaw;
+				SetActorRotation(CharRot);
 			}
 		}
 	}
@@ -307,16 +293,13 @@ void AFingerCharacter::OnRightClick()
 			UpdateMovementSpeed();
 			AddGauge(GaugeGainPerHit);
 
-			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다. (벽 걷기 중이 아닐 때만)
-			if (!bIsWallWalking)
+			// 출발할 때 카메라가 바라보는 방향으로 캐릭터를 즉시 회전시킵니다.
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
 			{
-				if (APlayerController* PC = Cast<APlayerController>(GetController()))
-				{
-					FRotator CamRot = PC->GetControlRotation();
-					FRotator CharRot = GetActorRotation();
-					CharRot.Yaw = CamRot.Yaw;
-					SetActorRotation(CharRot);
-				}
+				FRotator CamRot = PC->GetControlRotation();
+				FRotator CharRot = GetActorRotation();
+				CharRot.Yaw = CamRot.Yaw;
+				SetActorRotation(CharRot);
 			}
 		}
 	}
@@ -422,9 +405,9 @@ void AFingerCharacter::UpdateMovementSpeed()
 
 	if (GetCharacterMovement())
 	{
-		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * CurrentMovementSpeedMultiplier;
+		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * CurrentMovementSpeedMultiplier * ItemSpeedMultiplier;
 
-		// 2. 점프력(JumpZVelocity) 업데이트 (속도 배율에 비례)
+		// 2. 점프력(JumpZVelocity) 업데이트 (속도 배율에 비례 및 아이템 버프 반영)
 	   // CurrentMovementSpeedMultiplier가 1.0 (최소)일 때 DefaultJumpZVelocity 유지
 	   // CurrentMovementSpeedMultiplier가 MaxSpeedMultiplier (3.6)일 때 JumpZVelocity가 DefaultJumpZVelocity * MaxJumpZVelocityMultiplier (1.5)가 되도록 선형 보간
 
@@ -445,7 +428,7 @@ void AFingerCharacter::UpdateMovementSpeed()
 				(CurrentMovementSpeedMultiplier - MinSpeedMultiplier) / (MaxSpeedMultiplier - MinSpeedMultiplier));
 		}
 
-		GetCharacterMovement()->JumpZVelocity = DefaultJumpZVelocity * JumpMultiplier;
+		GetCharacterMovement()->JumpZVelocity = DefaultJumpZVelocity * JumpMultiplier * ItemJumpMultiplier;
 
 		/*UE_LOG(LogTemp, Warning, TEXT("Updated MaxWalkSpeed: %.1f (x%.1f), JumpZ: %.1f (x%.1f), Hits: %d"),
 			GetCharacterMovement()->MaxWalkSpeed, CurrentMovementSpeedMultiplier,
@@ -474,139 +457,180 @@ void AFingerCharacter::MoveForward(float AxisValue)
 
 void AFingerCharacter::Jump()
 {
-	if (bIsWallWalking)
+	// 공중 걷기 중에는 점프 불가
+	if (bIsAirWalking)
 	{
-		StopWallWalking();
+		return;
 	}
+
 	Super::Jump(); // ACharacter의 기본 Jump 기능을 호출합니다.
 	bJumpInputPressed = true; // 점프 입력이 눌렸음을 표시
 }
 
-void AFingerCharacter::OnWallWalkPressed()
+// --- 아이템 시스템 구현 ---
+void AFingerCharacter::AcquireItem(const FFingerItemData& NewItemData)
 {
-	if (bIsWallWalking)
+	// 이전 아이템이 있어도 새 아이템으로 덮어씀
+	CurrentHeldItem = NewItemData;
+
+	if (OnItemChanged.IsBound())
 	{
-		StopWallWalking();
+		OnItemChanged.Broadcast(CurrentHeldItem);
+	}
+
+	if (GEngine)
+	{
+		FString Msg = FString::Printf(TEXT("아이템 획득: %s (Shift 키로 사용)"), *CurrentHeldItem.ItemName.ToString());
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Msg);
+	}
+}
+
+void AFingerCharacter::UseCurrentItem()
+{
+	if (CurrentHeldItem.ItemType == EFingerItemType::None)
+	{
 		return;
 	}
 
-	// 점프 중에는 벽 걷기 사용 불가
+	switch (CurrentHeldItem.ItemType)
+	{
+	case EFingerItemType::SpeedBoost:
+		ApplySpeedBoost(CurrentHeldItem.EffectValue > 0.0f ? CurrentHeldItem.EffectValue : 1.6f,
+		                CurrentHeldItem.Duration > 0.0f ? CurrentHeldItem.Duration : 5.0f);
+		break;
+
+	case EFingerItemType::JumpBoost:
+		ApplyJumpBoost(CurrentHeldItem.EffectValue > 0.0f ? CurrentHeldItem.EffectValue : 1.6f,
+		               CurrentHeldItem.Duration > 0.0f ? CurrentHeldItem.Duration : 5.0f);
+		break;
+
+	case EFingerItemType::Dash:
+		ExecuteDash(CurrentHeldItem.EffectValue > 0.0f ? CurrentHeldItem.EffectValue : DefaultDashStrength);
+		break;
+
+	case EFingerItemType::AirWalk:
+		StartAirWalk(CurrentHeldItem.Duration > 0.0f ? CurrentHeldItem.Duration : 3.0f);
+		break;
+
+	default:
+		break;
+	}
+
+	// 사용 후 소모 (None으로 초기화)
+	CurrentHeldItem = FFingerItemData();
+	if (OnItemChanged.IsBound())
+	{
+		OnItemChanged.Broadcast(CurrentHeldItem);
+	}
+}
+
+// 1. 이동속도 버프
+void AFingerCharacter::ApplySpeedBoost(float Multiplier, float Duration)
+{
+	ItemSpeedMultiplier = Multiplier;
+	UpdateMovementSpeed();
+
+	GetWorldTimerManager().ClearTimer(SpeedBuffTimerHandle);
+	GetWorldTimerManager().SetTimer(SpeedBuffTimerHandle, this, &AFingerCharacter::EndSpeedBoost, Duration, false);
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("이동속도 증가 버프 적용!"));
+	}
+}
+
+void AFingerCharacter::EndSpeedBoost()
+{
+	ItemSpeedMultiplier = 1.0f;
+	UpdateMovementSpeed();
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("이동속도 증가 버프 종료"));
+	}
+}
+
+// 2. 점프력 버프
+void AFingerCharacter::ApplyJumpBoost(float Multiplier, float Duration)
+{
+	ItemJumpMultiplier = Multiplier;
+	UpdateMovementSpeed();
+
+	GetWorldTimerManager().ClearTimer(JumpBuffTimerHandle);
+	GetWorldTimerManager().SetTimer(JumpBuffTimerHandle, this, &AFingerCharacter::EndJumpBoost, Duration, false);
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("점프력 증가 버프 적용!"));
+	}
+}
+
+void AFingerCharacter::EndJumpBoost()
+{
+	ItemJumpMultiplier = 1.0f;
+	UpdateMovementSpeed();
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("점프력 증가 버프 종료"));
+	}
+}
+
+// 3. 대쉬
+void AFingerCharacter::ExecuteDash(float Strength)
+{
+	FVector DashVelocity = GetActorForwardVector() * Strength;
+
+	// 공중(점프 중)일 때 낙하 관성을 끊고 앞쪽으로 쭉 뻗어나가며 살짝 띄워줌
 	if (GetCharacterMovement()->IsFalling())
 	{
-		if (GEngine)
-		{
-			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("점프 중에는 벽 걷기를 사용할 수 없습니다!"));
-		}
-		return;
+		DashVelocity.Z = 250.0f;
 	}
 
-	if (CurrentGauge <= 0.0f)
-	{
-		if (GEngine)
-		{
-			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("게이지가 부족하여 벽을 걸을 수 없습니다!"));
-		}
-		return;
-	}
-
-	// 캐릭터가 바라보는 방향 또는 카메라 방향으로 벽 감지 라인트레이스 수행
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	FVector TraceStart = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->GetCameraLocation() : GetActorLocation();
-	FVector TraceDir = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->GetCameraRotation().Vector() : GetActorForwardVector();
-	FVector TraceEnd = TraceStart + (TraceDir * WallTraceDistance);
-
-	FCollisionQueryParams Params;
-	Params.AddIgnoredActor(this);
-
-	FHitResult HitResult;
-	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
-
-	// 카메라 뷰로 벽을 찾지 못했거나 바닥/천장을 친 경우, 캐릭터 정면(GetActorForwardVector)으로도 시도
-	if (!bHit || FMath::Abs(HitResult.ImpactNormal.Z) >= 0.75f)
-	{
-		TraceStart = GetActorLocation();
-		TraceEnd = TraceStart + (GetActorForwardVector() * WallTraceDistance);
-		bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, Params);
-	}
-
-	if (bHit && FMath::Abs(HitResult.ImpactNormal.Z) < 0.75f)
-	{
-		StartWallWalking(HitResult.ImpactNormal, HitResult.ImpactPoint);
-	}
-	else
-	{
-		if (GEngine)
-		{
-			// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("바라보는 방향에 벽이 감지되지 않았습니다."));
-		}
-	}
-}
-
-void AFingerCharacter::StartWallWalking(const FVector& WallNormal, const FVector& WallPoint)
-{
-	if (bIsWallWalking) return;
-
-	bIsWallWalking = true;
-
-	// 1. 중력 방향을 벽면 쪽(-WallNormal)으로 변경
-	FVector NewGravityDir = -WallNormal;
-	GetCharacterMovement()->SetGravityDirection(NewGravityDir);
-
-	// 2. 캐릭터의 회전을 벽 표면에 맞추어 직교화 (위쪽이 아닌 캐릭터가 바라보던 앞쪽 방향을 벽면에 투영)
-	FVector WallUpNormal = WallNormal;
-	FVector WallForward = FVector::VectorPlaneProject(GetActorForwardVector(), WallUpNormal).GetSafeNormal();
-	if (WallForward.IsNearlyZero())
-	{
-		WallForward = FVector::VectorPlaneProject(GetActorRightVector(), WallUpNormal).GetSafeNormal();
-		if (WallForward.IsNearlyZero())
-		{
-			WallForward = FVector::UpVector;
-		}
-	}
-	FVector WallRight = FVector::CrossProduct(WallUpNormal, WallForward).GetSafeNormal();
-
-	// X=Forward, Y=Right, Z=Up 행렬 생성
-	FMatrix WallMatrix(WallForward, WallRight, WallUpNormal, FVector::ZeroVector);
-	SetActorRotation(WallMatrix.Rotator());
-
-	// 3. 이동 모드를 Walking으로 명시적 설정 및 속도 초기화
-	GetCharacterMovement()->Velocity = FVector::ZeroVector;
-	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
-
-	// 4. 벽 걷기 중 언리얼 이동 컴포넌트가 캐릭터를 수평 바닥 기준(Pitch=0, Roll=0)으로 강제 회전시키려는 기능 비활성화
-	GetCharacterMovement()->bOrientRotationToMovement = false;
-	GetCharacterMovement()->bUseControllerDesiredRotation = false;
+	LaunchCharacter(DashVelocity, true, true);
 
 	if (GEngine)
 	{
-		// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("벽 걷기 시작!"));
+		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Cyan, TEXT("대쉬 사용!"));
 	}
 }
 
-void AFingerCharacter::StopWallWalking()
+// 4. 공중 걷기 (3초)
+void AFingerCharacter::StartAirWalk(float Duration)
 {
-	if (!bIsWallWalking) return;
+	bIsAirWalking = true;
 
-	bIsWallWalking = false;
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		FVector Vel = MoveComp->Velocity;
+		Vel.Z = 0.0f;
+		MoveComp->Velocity = Vel;
+		MoveComp->SetMovementMode(MOVE_Flying);
+	}
 
-	// 1. 중력 방향을 원래의 아래쪽으로 복원
-	GetCharacterMovement()->SetGravityDirection(FVector(0.0f, 0.0f, -1.0f));
-
-	// 2. 바닥 보행 회전 기능 복원 (본 프로젝트는 마우스 조향 AddActorLocalRotation을 사용하므로 false 유지)
-	GetCharacterMovement()->bOrientRotationToMovement = false;
-	GetCharacterMovement()->bUseControllerDesiredRotation = false;
-
-	// 3. 캐릭터를 수평 바닥 기준 바로 서도록 회전 복원 (Yaw 유지, Pitch/Roll 0)
-	FRotator CurrentRot = GetActorRotation();
-	FRotator UprightRot(0.0f, CurrentRot.Yaw, 0.0f);
-	SetActorRotation(UprightRot);
-
-	// 4. 이동 모드를 Falling으로 변경하여 자연스럽게 바닥으로 떨어지도록 함
-	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	GetWorldTimerManager().ClearTimer(AirWalkTimerHandle);
+	GetWorldTimerManager().SetTimer(AirWalkTimerHandle, this, &AFingerCharacter::EndAirWalk, Duration, false);
 
 	if (GEngine)
 	{
-		// GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("벽 걷기 해제"));
+		GEngine->AddOnScreenDebugMessage(-1, Duration, FColor(200, 100, 255), TEXT("공중 걷기 시작! (점프 불가)"));
+	}
+}
+
+void AFingerCharacter::EndAirWalk()
+{
+	if (!bIsAirWalking) return;
+
+	bIsAirWalking = false;
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->SetMovementMode(MOVE_Falling);
+	}
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor(200, 100, 255), TEXT("공중 걷기 종료"));
 	}
 }
 
