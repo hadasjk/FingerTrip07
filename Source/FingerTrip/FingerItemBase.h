@@ -9,8 +9,6 @@
 
 class USphereComponent;
 class UStaticMeshComponent;
-class URotatingMovementComponent;
-class UTextRenderComponent;
 
 // PrioritizeCategories와 AutoExpandCategories로 "Item Settings"를 디테일 패널 최상단으로 강제 배치 및 자동 펼침
 UCLASS(PrioritizeCategories = ("Item Settings"), AutoExpandCategories = ("Item Settings"))
@@ -22,32 +20,62 @@ public:
 	AFingerItemBase();
 
 	// =========================================================================
-	// [1] 디테일 창 최상단 노출 핵심 설정 (인스턴스별 드롭다운 선택)
+	// [1] 디테일 창 최상단 노출 핵심 설정 (인스턴스별 설정)
 	// =========================================================================
 
-	// 디테일 패널에서 배치된 각 인스턴스마다 선택 가능한 아이템 종류 (최우선 노출)
+	// 아이템 대분류 (소모 아이템 vs 영구 아이템)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 0))
+	EFingerItemCategory ItemCategory = EFingerItemCategory::Consumable;
+
+	// --- [소모 아이템 설정] ---
+	// true이면 획득 시 소모 아이템 풀에서 무작위 선택 (현재 4종, 향후 추가 가능)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 1, EditCondition = "ItemCategory == EFingerItemCategory::Consumable"))
+	bool bRandomConsumable = true;
+
+	// bRandomConsumable이 false일 때 고정으로 지급할 소모 아이템 종류
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 2, EditCondition = "ItemCategory == EFingerItemCategory::Consumable && !bRandomConsumable"))
 	EFingerItemType ItemType = EFingerItemType::SpeedBoost;
 
-	// 아이템 획득 후 다시 나타날 때까지 걸리는 시간 (초)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 1))
+	// 소모 아이템 리스폰 시간 (초) - 영구 아이템은 리스폰되지 않음
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 3, EditCondition = "ItemCategory == EFingerItemCategory::Consumable"))
 	float RespawnTime = 5.0f;
 
-	// 에디터/월드에서 머리 위 라벨 텍스트 표시 여부
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 2))
-	bool bShowLabelInWorld = true;
+	// --- [영구 아이템 설정] ---
+	// 영구 아이템 종류 (현재 이동속도 영구 증가, 향후 추가 가능)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 1, EditCondition = "ItemCategory == EFingerItemCategory::Permanent"))
+	EFingerPermanentItemType PermanentItemType = EFingerPermanentItemType::PermanentSpeedBoost;
 
-	// 세부 커스텀 데이터 (지속시간, 수치 등 - 고급 설정)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Advanced Custom", meta = (DisplayPriority = 3))
-	FFingerItemData ItemData;
+	// 영구 능력치 증가량 (이동속도의 경우 0.04x 씩 빨라짐)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings", meta = (DisplayPriority = 2, EditCondition = "ItemCategory == EFingerItemCategory::Permanent"))
+	float PermanentValue = 0.04f;
+
+	// --- [비주얼 설정] ---
+	// 빙글빙글 회전 속도 (초당 도 회전, 예: 90 = 1초에 90도 회전)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Visual", meta = (DisplayPriority = 4))
+	float RotationSpeed = 90.0f;
 
 	// 상하 부유 애니메이션 진폭 (위아래 흔들리는 높이)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Animation", AdvancedDisplay)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Visual", AdvancedDisplay)
 	float FloatAmplitude = 12.0f;
 
 	// 상하 부유 애니메이션 주기 속도
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Animation", AdvancedDisplay)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Visual", AdvancedDisplay)
 	float FloatFrequency = 2.0f;
+
+	// 세부 커스텀 데이터 (고정 소모 아이템 전용 세부 설정)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Advanced Custom", AdvancedDisplay)
+	FFingerItemData ItemData;
+
+	// 커스텀 소모 아이템 풀 (기본 4종 외에 추가하거나 특정 액터에서 풀을 한정하고 싶을 때 사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Settings|Advanced Custom", AdvancedDisplay)
+	TArray<EFingerItemType> ConsumablePool;
+
+	// 소모 아이템 풀에서 랜덤으로 1개를 추첨하는 함수
+	UFUNCTION(BlueprintCallable, Category = "Item")
+	EFingerItemType PickRandomConsumableType() const;
+
+	// 특정 아이템 타입의 기본 FFingerItemData 생성 헬퍼
+	static FFingerItemData CreateDefaultItemData(EFingerItemType InType);
 
 	// 아이템 데이터 게터
 	UFUNCTION(BlueprintPure, Category = "Item")
@@ -75,14 +103,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UStaticMeshComponent> MeshComponent;
 
-	// 공중 회전 컴포넌트 (초당 Yaw 회전)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	TObjectPtr<URotatingMovementComponent> RotatingMovement;
-
-	// 레벨 디자인 확인용 텍스트 렌더러 (에디터 및 인게임 선택 표시)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	TObjectPtr<UTextRenderComponent> LabelTextComponent;
-
 	FVector InitialMeshLocalLocation;
 	FTimerHandle RespawnTimerHandle;
 
@@ -92,12 +112,15 @@ protected:
 	                            UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	                            bool bFromSweep, const FHitResult& SweepResult);
 
-	// 아이템 비활성화 (획득 시)
+	// 소모 아이템 비활성화 및 리스폰 예약
 	virtual void DeactivateItem();
 
-	// 아이템 리스폰 (일정 시간 후)
+	// 소모 아이템 리스폰 (일정 시간 후)
 	virtual void RespawnItem();
 
-	// ItemType에 맞춰 기본 데이터 및 색상 동기화
+	// 영구 아이템 획득 처리 (리스폰되지 않고 파괴/영구 비활성화)
+	virtual void ConsumePermanentItem(class AFingerCharacter* Player);
+
+	// 설정값에 맞춰 데이터 동기화
 	void SyncItemTypeDefaults();
 };
