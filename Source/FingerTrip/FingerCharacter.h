@@ -290,6 +290,23 @@ public:
     void StartAirWalk(float Duration);
     void EndAirWalk();
 
+    // --- 영구 아이템 시스템 (누적 스탯, 리스폰 X) ---
+    // 영구 이동속도 추가 배율 (기본 1.0f, 먹을 때마다 +0.04x 씩 누적)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Permanent")
+    float PermanentSpeedMultiplier = 1.0f;
+
+    // 영구 이동속도 아이템 획득 누적 개수
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item|Permanent")
+    int32 PermanentSpeedItemCount = 0;
+
+    // 영구 이동속도 증가 적용 함수 (기본 +0.04x)
+    UFUNCTION(BlueprintCallable, Category = "Item|Permanent")
+    void ApplyPermanentSpeedBonus(float BonusAmount = 0.04f);
+
+    // 영구 아이템 공용 적용 함수 (추후 다양한 영구 아이템 확장 대응)
+    UFUNCTION(BlueprintCallable, Category = "Item|Permanent")
+    void ApplyPermanentItem(EFingerPermanentItemType PermType, float Value = 0.04f);
+
 private:
 
 

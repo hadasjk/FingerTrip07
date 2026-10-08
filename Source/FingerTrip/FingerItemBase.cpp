@@ -3,8 +3,6 @@
 #include "FingerItemBase.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/TextRenderComponent.h"
-#include "GameFramework/RotatingMovementComponent.h"
 #include "FingerCharacter.h"
 
 AFingerItemBase::AFingerItemBase()
@@ -20,29 +18,31 @@ AFingerItemBase::AFingerItemBase()
 	CollisionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 
-	// 2. 스태틱 메시 (아이템 외형)
+	// 2. 스태틱 메시 (아이템 외형 - 회전 및 부유 대상)
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// 3. 공중 천천히 회전 컴포넌트 (초당 60도)
-	RotatingMovement = CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotatingMovement"));
-	RotatingMovement->RotationRate = FRotator(0.0f, 60.0f, 0.0f);
-
-	// 4. 레벨 디자인용 라벨 텍스트
-	LabelTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("LabelTextComponent"));
-	LabelTextComponent->SetupAttachment(RootComponent);
-	LabelTextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 60.0f));
-	LabelTextComponent->SetHorizontalAlignment(EHTA_Center);
-	LabelTextComponent->SetVerticalAlignment(EVRTA_TextCenter);
-	LabelTextComponent->SetWorldSize(20.0f);
-
-	// 기본값 초기화
+	// 기본 설정값 초기화
+	ItemCategory = EFingerItemCategory::Consumable;
+	bRandomConsumable = true;
 	ItemType = EFingerItemType::SpeedBoost;
 	RespawnTime = 5.0f;
-	FloatAmplitude = 10.0f;
+
+	PermanentItemType = EFingerPermanentItemType::PermanentSpeedBoost;
+	PermanentValue = 0.04f;
+
+	RotationSpeed = 90.0f; // 1초에 90도 회전
+	FloatAmplitude = 12.0f;
 	FloatFrequency = 2.0f;
-	bShowLabelInWorld = true;
+
+	// 기본 소모 아이템 풀 (4종)
+	ConsumablePool = {
+		EFingerItemType::SpeedBoost,
+		EFingerItemType::JumpBoost,
+		EFingerItemType::Dash,
+		EFingerItemType::AirWalk
+	};
 
 	SyncItemTypeDefaults();
 }
@@ -51,39 +51,31 @@ void AFingerItemBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	InitialMeshLocalLocation = MeshComponent->GetRelativeLocation();
+	InitialMeshLocalLocation = MeshComponent ? MeshComponent->GetRelativeLocation() : FVector::ZeroVector;
 
 	if (CollisionSphere)
 	{
 		CollisionSphere->OnComponentBeginOverlap.AddDynamic(this, &AFingerItemBase::OnOverlapBegin);
 	}
 
-	if (LabelTextComponent)
-	{
-		LabelTextComponent->SetVisibility(bShowLabelInWorld);
-	}
+	SyncItemTypeDefaults();
 }
 
 void AFingerItemBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 공중에서 둥실둥실 위아래로 부유하는 애니메이션
-	if (!IsHidden())
+	if (!IsHidden() && MeshComponent)
 	{
+		// 1. 위아래로 둥실둥실 부유하는 사인파 애니메이션
 		float Time = GetWorld()->GetTimeSeconds();
 		float DeltaZ = FMath::Sin(Time * FloatFrequency) * FloatAmplitude;
 		MeshComponent->SetRelativeLocation(InitialMeshLocalLocation + FVector(0.0f, 0.0f, DeltaZ));
 
-		// 카메라 방향으로 라벨 텍스트 빌보드 회전
-		if (bShowLabelInWorld && LabelTextComponent && LabelTextComponent->IsVisible())
+		// 2. 빙글빙글 360도 회전 애니메이션
+		if (RotationSpeed != 0.0f)
 		{
-			if (APlayerCameraManager* CameraManager = GetWorld()->GetFirstPlayerController() ? GetWorld()->GetFirstPlayerController()->PlayerCameraManager : nullptr)
-			{
-				FVector CamLoc = CameraManager->GetCameraLocation();
-				FRotator LookRot = (CamLoc - LabelTextComponent->GetComponentLocation()).Rotation();
-				LabelTextComponent->SetWorldRotation(LookRot);
-			}
+			MeshComponent->AddRelativeRotation(FRotator(0.0f, RotationSpeed * DeltaTime, 0.0f));
 		}
 	}
 }
@@ -100,66 +92,67 @@ void AFingerItemBase::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(AFingerItemBase, ItemType))
-	{
-		// 디테일 패널에서 ItemType 드롭다운을 변경하면 해당 버프에 맞는 기본값 자동 동기화
-		SyncItemTypeDefaults();
-	}
+	SyncItemTypeDefaults();
 }
 #endif
 
-void AFingerItemBase::SyncItemTypeDefaults()
+EFingerItemType AFingerItemBase::PickRandomConsumableType() const
 {
-	ItemData.ItemType = ItemType;
+	const TArray<EFingerItemType>& Pool = (ConsumablePool.Num() > 0) ? ConsumablePool : TArray<EFingerItemType>{
+		EFingerItemType::SpeedBoost,
+		EFingerItemType::JumpBoost,
+		EFingerItemType::Dash,
+		EFingerItemType::AirWalk
+	};
 
-	FColor LabelColor = FColor::White;
-	FString TypeNameString;
+	int32 RandIndex = FMath::RandRange(0, Pool.Num() - 1);
+	return Pool[RandIndex];
+}
 
-	switch (ItemType)
+FFingerItemData AFingerItemBase::CreateDefaultItemData(EFingerItemType InType)
+{
+	FFingerItemData Data;
+	Data.ItemType = InType;
+
+	switch (InType)
 	{
 	case EFingerItemType::SpeedBoost:
-		ItemData.ItemName = NSLOCTEXT("FingerItem", "SpeedBoost", "이동속도 증가");
-		if (ItemData.Duration <= 0.0f) ItemData.Duration = 5.0f;
-		if (ItemData.EffectValue <= 0.0f) ItemData.EffectValue = 1.6f; // 기본 1.6배 가속
-		TypeNameString = TEXT("속도 증가");
-		LabelColor = FColor::Yellow;
+		Data.ItemName = NSLOCTEXT("FingerItem", "SpeedBoost", "Speed Boost");
+		Data.Duration = 5.0f;
+		Data.EffectValue = 1.6f;
 		break;
 
 	case EFingerItemType::JumpBoost:
-		ItemData.ItemName = NSLOCTEXT("FingerItem", "JumpBoost", "점프력 증가");
-		if (ItemData.Duration <= 0.0f) ItemData.Duration = 5.0f;
-		if (ItemData.EffectValue <= 0.0f) ItemData.EffectValue = 1.6f; // 기본 1.6배 점프력
-		TypeNameString = TEXT("점프력 증가");
-		LabelColor = FColor::Green;
+		Data.ItemName = NSLOCTEXT("FingerItem", "JumpBoost", "Jump Boost");
+		Data.Duration = 5.0f;
+		Data.EffectValue = 1.6f;
 		break;
 
 	case EFingerItemType::Dash:
-		ItemData.ItemName = NSLOCTEXT("FingerItem", "Dash", "대쉬");
-		ItemData.Duration = 0.0f; // 즉발형
-		if (ItemData.EffectValue <= 0.0f) ItemData.EffectValue = 2200.0f; // 기본 대쉬 세기
-		TypeNameString = TEXT("대쉬");
-		LabelColor = FColor::Cyan;
+		Data.ItemName = NSLOCTEXT("FingerItem", "Dash", "Dash");
+		Data.Duration = 0.0f;
+		Data.EffectValue = 2200.0f;
 		break;
 
 	case EFingerItemType::AirWalk:
-		ItemData.ItemName = NSLOCTEXT("FingerItem", "AirWalk", "공중 걷기");
-		ItemData.Duration = 3.0f; // 3초간 공중 걷기
-		ItemData.EffectValue = 0.0f;
-		TypeNameString = TEXT("공중 걷기");
-		LabelColor = FColor(200, 100, 255);
+		Data.ItemName = NSLOCTEXT("FingerItem", "AirWalk", "Air Walk");
+		Data.Duration = 3.0f;
+		Data.EffectValue = 0.0f;
 		break;
 
 	default:
-		TypeNameString = TEXT("None");
+		Data.ItemName = FText::FromString(TEXT("None"));
 		break;
 	}
 
-	if (LabelTextComponent)
+	return Data;
+}
+
+void AFingerItemBase::SyncItemTypeDefaults()
+{
+	if (ItemCategory == EFingerItemCategory::Consumable && !bRandomConsumable)
 	{
-		LabelTextComponent->SetText(FText::FromString(TypeNameString));
-		LabelTextComponent->SetTextRenderColor(LabelColor);
-		LabelTextComponent->SetVisibility(bShowLabelInWorld && ItemType != EFingerItemType::None);
+		ItemData = CreateDefaultItemData(ItemType);
 	}
 }
 
@@ -167,12 +160,26 @@ void AFingerItemBase::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor
                                     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
                                     bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (AFingerCharacter* Player = Cast<AFingerCharacter>(OtherActor))
+	AFingerCharacter* Player = Cast<AFingerCharacter>(OtherActor);
+	if (!Player)
 	{
-		// 플레이어에게 아이템 부여 (기존 아이템이 있더라도 새 아이템으로 덮어씌움)
-		Player->AcquireItem(ItemData);
+		return;
+	}
 
-		// 먹은 후 월드에서 일시 숨김 및 리스폰 타이머 가동
+	if (ItemCategory == EFingerItemCategory::Permanent)
+	{
+		// [영구 아이템]: 획득 시 영구 효과 적용 후 리스폰 없이 영구 제거
+		ConsumePermanentItem(Player);
+	}
+	else
+	{
+		// [소모 아이템]: 랜덤 선택 또는 고정 아이템 지급 후 리스폰 타이머 작동
+		EFingerItemType FinalType = bRandomConsumable ? PickRandomConsumableType() : ItemType;
+		FFingerItemData FinalData = (bRandomConsumable || ItemData.ItemType != FinalType) ? CreateDefaultItemData(FinalType) : ItemData;
+
+		Player->AcquireItem(FinalData);
+
+		// 월드에서 숨기고 리스폰 타이머 가동
 		DeactivateItem();
 	}
 }
@@ -182,12 +189,7 @@ void AFingerItemBase::DeactivateItem()
 	SetActorHiddenInGame(true);
 	SetActorEnableCollision(false);
 
-	if (LabelTextComponent)
-	{
-		LabelTextComponent->SetVisibility(false);
-	}
-
-	// 리스폰 타이머 등록 (인스턴스의 ItemType과 ItemData는 그대로 유지되므로 같은 버프로 다시 나타남)
+	// 리스폰 타이머 등록
 	GetWorldTimerManager().ClearTimer(RespawnTimerHandle);
 	GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &AFingerItemBase::RespawnItem, RespawnTime, false);
 }
@@ -196,9 +198,15 @@ void AFingerItemBase::RespawnItem()
 {
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
+}
 
-	if (LabelTextComponent && bShowLabelInWorld)
+void AFingerItemBase::ConsumePermanentItem(AFingerCharacter* Player)
+{
+	if (Player)
 	{
-		LabelTextComponent->SetVisibility(true);
+		Player->ApplyPermanentItem(PermanentItemType, PermanentValue);
 	}
+
+	// 영구 아이템은 리스폰되지 않으므로 액터 파괴
+	Destroy();
 }

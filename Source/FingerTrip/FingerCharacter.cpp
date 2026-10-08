@@ -61,6 +61,8 @@ AFingerCharacter::AFingerCharacter()
 	ItemJumpMultiplier = 1.0f;
 	DefaultDashStrength = 2200.0f;
 	bIsAirWalking = false;
+	PermanentSpeedMultiplier = 1.0f;
+	PermanentSpeedItemCount = 0;
 
 	bIsLevelCleared = false;
 	bHasGameEnded = false;
@@ -232,8 +234,8 @@ void AFingerCharacter::OnLeftClick()
 
 	if (!bIsWalkingRhythmically)
 	{
-		// 캐릭터가 거의 완전히 멈췄을 때만 새 콤보 시작 가능 (광클 꼼수 방지)
-		if (GetCharacterMovement()->Velocity.Size2D() < 10.0f)
+		// 캐릭터가 거의 완전히 멈췄을 때 또는 공중 걷기 중일 때 새 콤보 시작 가능
+		if (GetCharacterMovement()->Velocity.Size2D() < 10.0f || bIsAirWalking)
 		{
 			bIsWalkingRhythmically = true;
 			bStartedWithRightClick = false;
@@ -257,7 +259,7 @@ void AFingerCharacter::OnLeftClick()
 		// 걷고 있는데 눌러야 할 발이 오른발인데 좌클릭을 한 경우 즉시 콤보 끊기
 		if (!bNextStepIsLeft)
 		{
-			if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 실패 무시
+			if (GetCharacterMovement()->IsFalling()) return; // 일반 점프(낙하) 중일 때만 실패 무시 (공중 걷기 중에는 정상 실패 판정)
 			bIsWalkingRhythmically = false;
 			ConsecutiveRhythmHits = 0;
 			UpdateMovementSpeed();
@@ -275,7 +277,7 @@ void AFingerCharacter::OnRightClick()
 		// 눌러야 할 발이 왼발인데 우클릭을 한 경우 즉시 콤보 끊기
 		if (bNextStepIsLeft)
 		{
-			if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 실패 무시
+			if (GetCharacterMovement()->IsFalling()) return; // 일반 점프(낙하) 중일 때만 실패 무시 (공중 걷기 중에는 정상 실패 판정)
 			bIsWalkingRhythmically = false;
 			ConsecutiveRhythmHits = 0;
 			UpdateMovementSpeed();
@@ -283,8 +285,8 @@ void AFingerCharacter::OnRightClick()
 	}
 	else
 	{
-		// 가만히 있을 때 우클릭으로 출발하는 경우
-		if (GetCharacterMovement()->Velocity.Size2D() < 10.0f)
+		// 가만히 있을 때 또는 공중 걷기 중 우클릭으로 출발하는 경우
+		if (GetCharacterMovement()->Velocity.Size2D() < 10.0f || bIsAirWalking)
 		{
 			bIsWalkingRhythmically = true;
 			bStartedWithRightClick = true;
@@ -347,7 +349,7 @@ void AFingerCharacter::OnLeftFootDown()
 	}
 	else if (bIsWalkingRhythmically)
 	{
-		if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 애니메이션 노티파이에 의한 실패 무시
+		if (GetCharacterMovement()->IsFalling()) return; // 일반 점프(낙하) 중일 때만 실패 무시 (공중 걷기 중에는 정상 리듬 판정)
 
 		bIsWalkingRhythmically = false;
 		ConsecutiveRhythmHits = 0; 
@@ -386,7 +388,7 @@ void AFingerCharacter::OnRightFootDown()
 	}
 	else if (bIsWalkingRhythmically)
 	{
-		if (GetCharacterMovement()->IsFalling()) return; // 공중(점프 중)일 때는 애니메이션 노티파이에 의한 실패 무시
+		if (GetCharacterMovement()->IsFalling()) return; // 일반 점프(낙하) 중일 때만 실패 무시 (공중 걷기 중에는 정상 리듬 판정)
 
 		bIsWalkingRhythmically = false;
 		ConsecutiveRhythmHits = 0; 
@@ -405,7 +407,7 @@ void AFingerCharacter::UpdateMovementSpeed()
 
 	if (GetCharacterMovement())
 	{
-		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * CurrentMovementSpeedMultiplier * ItemSpeedMultiplier;
+		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * CurrentMovementSpeedMultiplier * ItemSpeedMultiplier * PermanentSpeedMultiplier;
 
 		// 2. 점프력(JumpZVelocity) 업데이트 (속도 배율에 비례 및 아이템 버프 반영)
 	   // CurrentMovementSpeedMultiplier가 1.0 (최소)일 때 DefaultJumpZVelocity 유지
@@ -490,6 +492,19 @@ void AFingerCharacter::UseCurrentItem()
 	if (CurrentHeldItem.ItemType == EFingerItemType::None)
 	{
 		return;
+	}
+
+	// [공중 걷기]: 공중(점프 또는 낙하 중)에서만 사용 가능! 땅에서는 사용 차단
+	if (CurrentHeldItem.ItemType == EFingerItemType::AirWalk)
+	{
+		if (GetCharacterMovement() && !GetCharacterMovement()->IsFalling())
+		{
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, TEXT("공중 걷기는 공중(점프 중)에서만 사용할 수 있습니다!"));
+			}
+			return; // 아이템을 소모하지 않고 함수 리턴
+		}
 	}
 
 	switch (CurrentHeldItem.ItemType)
@@ -602,18 +617,42 @@ void AFingerCharacter::StartAirWalk(float Duration)
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
+		// 1. Z축 낙하 속도 초기화 (공중에서 수평 유지)
 		FVector Vel = MoveComp->Velocity;
 		Vel.Z = 0.0f;
+
+		// 2. 비정상 급가속 방지: 수평 속도를 현재 정상 걷기 최대 속도로 제한
+		float WalkMaxSpeed = MoveComp->MaxWalkSpeed;
+		if (Vel.Size2D() > WalkMaxSpeed)
+		{
+			FVector2D Clamped2D = FVector2D(Vel.X, Vel.Y).GetClampedToMaxSize(WalkMaxSpeed);
+			Vel.X = Clamped2D.X;
+			Vel.Y = Clamped2D.Y;
+		}
 		MoveComp->Velocity = Vel;
+
+		// 3. 비행 모드 세팅: 미끄러지지 않도록 보행과 동일한 속도 및 감속 적용
+		MoveComp->MaxFlySpeed = WalkMaxSpeed;
+		MoveComp->BrakingDecelerationFlying = MoveComp->BrakingDecelerationWalking > 0.0f ? MoveComp->BrakingDecelerationWalking : 2048.0f;
 		MoveComp->SetMovementMode(MOVE_Flying);
 	}
+
+	// 4. 점프/낙하 애니메이션 해제 -> 애님BP가 공중에서도 걷기(로코모션) 애니메이션을 재생하도록 전환!
+	bJumpInputPressed = false;
+
+	// 5. 공중에서 즉시 리듬 걷기 모드 진입 (공중에서도 좌/우클릭 리듬 판정 시작)
+	bIsWalkingRhythmically = true;
+	bStartedWithRightClick = false;
+	bNextStepIsLeft = false; // 첫 발 성공 상태, 다음은 오른발
+	ConsecutiveRhythmHits = 1;
+	UpdateMovementSpeed();
 
 	GetWorldTimerManager().ClearTimer(AirWalkTimerHandle);
 	GetWorldTimerManager().SetTimer(AirWalkTimerHandle, this, &AFingerCharacter::EndAirWalk, Duration, false);
 
 	if (GEngine)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, Duration, FColor(200, 100, 255), TEXT("공중 걷기 시작! (점프 불가)"));
+		GEngine->AddOnScreenDebugMessage(-1, Duration, FColor(200, 100, 255), TEXT("공중 걷기 발동! (3초간 공중 보행, 리듬 조작 가능)"));
 	}
 }
 
@@ -625,12 +664,41 @@ void AFingerCharacter::EndAirWalk()
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
+		MoveComp->BrakingDecelerationFlying = 0.0f;
 		MoveComp->SetMovementMode(MOVE_Falling);
 	}
 
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor(200, 100, 255), TEXT("공중 걷기 종료"));
+	}
+}
+
+// --- 영구 아이템 적용 구현 ---
+void AFingerCharacter::ApplyPermanentSpeedBonus(float BonusAmount)
+{
+	PermanentSpeedMultiplier += BonusAmount;
+	PermanentSpeedItemCount++;
+	UpdateMovementSpeed();
+
+	if (GEngine)
+	{
+		FString Msg = FString::Printf(TEXT("★ 영구 이동속도 증가! (+%.2fx) -> 현재 속도 배율: x%.2f (누적 %d회)"),
+			BonusAmount, PermanentSpeedMultiplier, PermanentSpeedItemCount);
+		GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor(50, 255, 150), Msg);
+	}
+}
+
+void AFingerCharacter::ApplyPermanentItem(EFingerPermanentItemType PermType, float Value)
+{
+	switch (PermType)
+	{
+	case EFingerPermanentItemType::PermanentSpeedBoost:
+		ApplyPermanentSpeedBonus(Value > 0.0f ? Value : 0.04f);
+		break;
+
+	default:
+		break;
 	}
 }
 
