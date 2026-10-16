@@ -307,7 +307,34 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Item|Permanent")
     void ApplyPermanentItem(EFingerPermanentItemType PermType, float Value = 0.04f);
 
+    // --- 미끄러운 바닥 (화장실 타일 / 얼음) 이동 시스템 ---
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Slippery")
+    bool bIsOnSlipperyFloor = false;
+
+    // 미끄러운 바닥에서의 바닥 마찰 계수 (기본 0.35f: 낮을수록 회전/조향 시 관성 미끄러짐 증가)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float SlipperyGroundFriction = 0.35f;
+
+    // 미끄러운 바닥에서의 제동 감속 (기본 150.0f: 낮을수록 입력을 멈춰도 길게 미끄러짐)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float SlipperyBrakingDeceleration = 150.0f;
+
+    // 미끄러운 바닥에서의 제동 마찰 계수 (기본 0.0f)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float SlipperyBrakingFrictionFactor = 0.0f;
+
+    // 바닥 상태 전환 시 마찰력 보간 속도
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float SlipperyInterpSpeed = 6.0f;
+
+    // 바닥 표면 감지 및 마찰 계수 조정 함수
+    void CheckFloorSurface(float DeltaTime);
+
 private:
+    float DefaultGroundFriction = 8.0f;
+    float DefaultBrakingDecelerationWalking = 2048.0f;
+    float DefaultBrakingFrictionFactor = 2.0f;
+
 
 
     UPROPERTY(VisibleAnywhere, Category = "Game Clear")

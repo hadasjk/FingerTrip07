@@ -8,6 +8,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 
 // Sets default values
 AFingerCharacter::AFingerCharacter()
@@ -81,6 +82,14 @@ void AFingerCharacter::BeginPlay()
 	// CharacterMovementComponent의 JumpZVelocity 기본값을 저장
 	DefaultJumpZVelocity = GetCharacterMovement()->JumpZVelocity;
 
+	// 바닥 마찰력 및 제동 수치 기본값 저장
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		DefaultGroundFriction = MoveComp->GroundFriction;
+		DefaultBrakingDecelerationWalking = MoveComp->BrakingDecelerationWalking;
+		DefaultBrakingFrictionFactor = MoveComp->BrakingFrictionFactor;
+	}
+
 	// --- 게임 타이머 시작 ---
 	// 1초마다 UpdateGameTimer 함수 호출
 	GetWorldTimerManager().SetTimer(GameTimerHandle, this, &AFingerCharacter::UpdateGameTimer, 1.0f, true);
@@ -110,6 +119,9 @@ void AFingerCharacter::AddGauge(float Amount)
 void AFingerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// 미끄러운 바닥(화장실 타일, 얼음 등) 감지 및 마찰 계수 동적 조정
+	CheckFloorSurface(DeltaTime);
 
 	if (bIsWalkingRhythmically)
 	{
@@ -849,3 +861,64 @@ void AFingerCharacter::SpawnRhythmEffect(bool bIsRightFoot)
 		NiagaraComp->SetVariableFloat(FName("SpeedMultiplier"), CurrentMovementSpeedMultiplier);
 	}
 }
+
+void AFingerCharacter::CheckFloorSurface(float DeltaTime)
+{
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	if (!MoveComp) return;
+
+	bool bFloorIsSlippery = false;
+
+	// 바닥을 딛고 있을 때 검사
+	if (MoveComp->IsMovingOnGround() && MoveComp->CurrentFloor.IsWalkableFloor())
+	{
+		const FHitResult& FloorHit = MoveComp->CurrentFloor.HitResult;
+
+		// 1. 피지컬 머티리얼 검사 (머티리얼에 등록된 PM_Slippery, PM_Ice, PM_Wet 등)
+		if (FloorHit.PhysMaterial.IsValid())
+		{
+			FString PhysMatName = FloorHit.PhysMaterial->GetName();
+			if (PhysMatName.Contains(TEXT("Slippery"), ESearchCase::IgnoreCase) ||
+				PhysMatName.Contains(TEXT("Ice"), ESearchCase::IgnoreCase) ||
+				PhysMatName.Contains(TEXT("Wet"), ESearchCase::IgnoreCase))
+			{
+				bFloorIsSlippery = true;
+			}
+		}
+
+		// 2. 액터 태그 검사 (텍스처나 피지컬 머티리얼이 없는 임시 메시용: Actor Tag에 "Slippery", "Ice", "Wet")
+		if (!bFloorIsSlippery && FloorHit.GetActor())
+		{
+			if (FloorHit.GetActor()->ActorHasTag(FName("Slippery")) ||
+				FloorHit.GetActor()->ActorHasTag(FName("Ice")) ||
+				FloorHit.GetActor()->ActorHasTag(FName("Wet")))
+			{
+				bFloorIsSlippery = true;
+			}
+		}
+
+		// 3. 컴포넌트 태그 검사
+		if (!bFloorIsSlippery && FloorHit.GetComponent())
+		{
+			if (FloorHit.GetComponent()->ComponentHasTag(FName("Slippery")) ||
+				FloorHit.GetComponent()->ComponentHasTag(FName("Ice")) ||
+				FloorHit.GetComponent()->ComponentHasTag(FName("Wet")))
+			{
+				bFloorIsSlippery = true;
+			}
+		}
+	}
+
+	bIsOnSlipperyFloor = bFloorIsSlippery;
+
+	// 목표 마찰력 및 감속값 결정
+	float TargetFriction = bIsOnSlipperyFloor ? SlipperyGroundFriction : DefaultGroundFriction;
+	float TargetDeceleration = bIsOnSlipperyFloor ? SlipperyBrakingDeceleration : DefaultBrakingDecelerationWalking;
+	float TargetFrictionFactor = bIsOnSlipperyFloor ? SlipperyBrakingFrictionFactor : DefaultBrakingFrictionFactor;
+
+	// 부드럽게 보간
+	MoveComp->GroundFriction = FMath::FInterpTo(MoveComp->GroundFriction, TargetFriction, DeltaTime, SlipperyInterpSpeed);
+	MoveComp->BrakingDecelerationWalking = FMath::FInterpTo(MoveComp->BrakingDecelerationWalking, TargetDeceleration, DeltaTime, SlipperyInterpSpeed);
+	MoveComp->BrakingFrictionFactor = FMath::FInterpTo(MoveComp->BrakingFrictionFactor, TargetFrictionFactor, DeltaTime, SlipperyInterpSpeed);
+}
+
