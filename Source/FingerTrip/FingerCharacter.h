@@ -327,8 +327,23 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
     float SlipperyInterpSpeed = 6.0f;
 
+    // 착지 시 미끄러짐 활성화 여부
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    bool bEnableLandingSlide = true;
+
+    // 미끄러운 바닥 착지 시 최소 수평 속도 보장 (이동 중 점프 후 착지 시 시원하게 미끄러지도록 설정)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float LandingSlideMinSpeed = 300.0f;
+
+    // 미끄러운 바닥 착지 시 공중 속도 반영 배율 (1.0 = 공중 속도 100% 보존)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Slippery")
+    float LandingSlideSpeedMultiplier = 1.0f;
+
     // 바닥 표면 감지 및 마찰 계수 조정 함수
     void CheckFloorSurface(float DeltaTime);
+
+    // 주어진 HitResult의 표면이 미끄러운지(피지컬 머티리얼 또는 태그) 판별하는 헬퍼 함수
+    bool IsSurfaceSlippery(const FHitResult& HitResult) const;
 
 private:
     float DefaultGroundFriction = 8.0f;

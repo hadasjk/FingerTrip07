@@ -723,7 +723,41 @@ void AFingerCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit); // ACharacter의 기본 Landed 기능을 호출합니다.
 	bJumpInputPressed = false; // 착지했으므로 점프 입력 상태를 리셋 
-	
+
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+
+	// 착지한 표면이 미끄러운 바닥(얼음/화장실 타일 등)인지 판별
+	if (IsSurfaceSlippery(Hit))
+	{
+		bIsOnSlipperyFloor = true;
+
+		if (MoveComp)
+		{
+			// 착지 순간 지연 없이 즉시 미끄러운 바닥 마찰력/제동력으로 전환
+			MoveComp->GroundFriction = SlipperyGroundFriction;
+			MoveComp->BrakingDecelerationWalking = SlipperyBrakingDeceleration;
+			MoveComp->BrakingFrictionFactor = SlipperyBrakingFrictionFactor;
+
+			// 착지 시 공중 수평 속도 유지 및 슬라이딩 처리
+			if (bEnableLandingSlide)
+			{
+				FVector HorizVel = FVector(MoveComp->Velocity.X, MoveComp->Velocity.Y, 0.0f);
+				float HorizSpeed = HorizVel.Size();
+
+				if (HorizSpeed > 10.0f)
+				{
+					// 공중에서 이동 중 착지한 경우: 속도를 감속시키지 않고 미끄러짐 유지
+					float SlideSpeed = FMath::Max(HorizSpeed * LandingSlideSpeedMultiplier, LandingSlideMinSpeed);
+					MoveComp->Velocity = HorizVel.GetSafeNormal() * SlideSpeed;
+				}
+			}
+		}
+	}
+	else
+	{
+		bIsOnSlipperyFloor = false;
+	}
+
 	// 착지 시 바니합(연속 점프) 꼼수 방지를 위해 리듬 콤보 초기화
 	bIsWalkingRhythmically = false;
 	ConsecutiveRhythmHits = 0;
@@ -862,51 +896,63 @@ void AFingerCharacter::SpawnRhythmEffect(bool bIsRightFoot)
 	}
 }
 
+bool AFingerCharacter::IsSurfaceSlippery(const FHitResult& HitResult) const
+{
+	// 1. 피지컬 머티리얼 검사 (머티리얼에 등록된 PM_Slippery, PM_Ice, PM_Wet 등)
+	if (HitResult.PhysMaterial.IsValid())
+	{
+		FString PhysMatName = HitResult.PhysMaterial->GetName();
+		if (PhysMatName.Contains(TEXT("Slippery"), ESearchCase::IgnoreCase) ||
+			PhysMatName.Contains(TEXT("Ice"), ESearchCase::IgnoreCase) ||
+			PhysMatName.Contains(TEXT("Wet"), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+
+	// 2. 액터 태그 검사 (텍스처나 피지컬 머티리얼이 없는 임시 메시용: Actor Tag에 "Slippery", "Ice", "Wet")
+	if (AActor* HitActor = HitResult.GetActor())
+	{
+		if (HitActor->ActorHasTag(FName("Slippery")) ||
+			HitActor->ActorHasTag(FName("Ice")) ||
+			HitActor->ActorHasTag(FName("Wet")))
+		{
+			return true;
+		}
+	}
+
+	// 3. 컴포넌트 태그 검사
+	if (UPrimitiveComponent* HitComp = HitResult.GetComponent())
+	{
+		if (HitComp->ComponentHasTag(FName("Slippery")) ||
+			HitComp->ComponentHasTag(FName("Ice")) ||
+			HitComp->ComponentHasTag(FName("Wet")))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void AFingerCharacter::CheckFloorSurface(float DeltaTime)
 {
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	if (!MoveComp) return;
+
+	// 공중에 있을 때(낙하/점프 중)는 지면 마찰력 보간을 건너뜁니다.
+	// (착지 순간의 속도 보존 및 Landed() 처리를 방해하지 않기 위함)
+	if (MoveComp->IsFalling())
+	{
+		return;
+	}
 
 	bool bFloorIsSlippery = false;
 
 	// 바닥을 딛고 있을 때 검사
 	if (MoveComp->IsMovingOnGround() && MoveComp->CurrentFloor.IsWalkableFloor())
 	{
-		const FHitResult& FloorHit = MoveComp->CurrentFloor.HitResult;
-
-		// 1. 피지컬 머티리얼 검사 (머티리얼에 등록된 PM_Slippery, PM_Ice, PM_Wet 등)
-		if (FloorHit.PhysMaterial.IsValid())
-		{
-			FString PhysMatName = FloorHit.PhysMaterial->GetName();
-			if (PhysMatName.Contains(TEXT("Slippery"), ESearchCase::IgnoreCase) ||
-				PhysMatName.Contains(TEXT("Ice"), ESearchCase::IgnoreCase) ||
-				PhysMatName.Contains(TEXT("Wet"), ESearchCase::IgnoreCase))
-			{
-				bFloorIsSlippery = true;
-			}
-		}
-
-		// 2. 액터 태그 검사 (텍스처나 피지컬 머티리얼이 없는 임시 메시용: Actor Tag에 "Slippery", "Ice", "Wet")
-		if (!bFloorIsSlippery && FloorHit.GetActor())
-		{
-			if (FloorHit.GetActor()->ActorHasTag(FName("Slippery")) ||
-				FloorHit.GetActor()->ActorHasTag(FName("Ice")) ||
-				FloorHit.GetActor()->ActorHasTag(FName("Wet")))
-			{
-				bFloorIsSlippery = true;
-			}
-		}
-
-		// 3. 컴포넌트 태그 검사
-		if (!bFloorIsSlippery && FloorHit.GetComponent())
-		{
-			if (FloorHit.GetComponent()->ComponentHasTag(FName("Slippery")) ||
-				FloorHit.GetComponent()->ComponentHasTag(FName("Ice")) ||
-				FloorHit.GetComponent()->ComponentHasTag(FName("Wet")))
-			{
-				bFloorIsSlippery = true;
-			}
-		}
+		bFloorIsSlippery = IsSurfaceSlippery(MoveComp->CurrentFloor.HitResult);
 	}
 
 	bIsOnSlipperyFloor = bFloorIsSlippery;
@@ -921,4 +967,5 @@ void AFingerCharacter::CheckFloorSurface(float DeltaTime)
 	MoveComp->BrakingDecelerationWalking = FMath::FInterpTo(MoveComp->BrakingDecelerationWalking, TargetDeceleration, DeltaTime, SlipperyInterpSpeed);
 	MoveComp->BrakingFrictionFactor = FMath::FInterpTo(MoveComp->BrakingFrictionFactor, TargetFrictionFactor, DeltaTime, SlipperyInterpSpeed);
 }
+
 
